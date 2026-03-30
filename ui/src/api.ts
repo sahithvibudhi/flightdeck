@@ -42,7 +42,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
-// Auth
 export const login = (username: string, password: string) =>
   request<{ token: string }>('/auth/login', {
     method: 'POST',
@@ -55,29 +54,35 @@ export const changePassword = (current: string, newPassword: string) =>
     body: JSON.stringify({ current, new: newPassword }),
   });
 
-// Apps
 export interface App {
   id: string;
   name: string;
   port: number;
   start_command: string;
   status: string;
+  repo_url: string | null;
+  branch: string | null;
   domains: string[];
   created_at: string;
 }
 
 export const listApps = () => request<App[]>('/apps');
 export const getApp = (id: string) => request<App>(`/apps/${id}`);
-export const createApp = (name: string, start_command: string) =>
-  request<App>('/apps', { method: 'POST', body: JSON.stringify({ name, start_command }) });
 export const deleteApp = (id: string) => request(`/apps/${id}`, { method: 'DELETE' });
 export const startApp = (id: string) => request(`/apps/${id}/start`, { method: 'POST' });
 export const stopApp = (id: string) => request(`/apps/${id}/stop`, { method: 'POST' });
 export const restartApp = (id: string) => request(`/apps/${id}/restart`, { method: 'POST' });
+export const pullApp = (id: string) => request<{ output: string }>(`/apps/${id}/pull`, { method: 'POST' });
 export const getAppLogs = (id: string, lines = 100) =>
   request<{ lines: string[] }>(`/apps/${id}/logs?lines=${lines}`);
 
-// Envs
+export const createApp = (data: {
+  name: string;
+  start_command: string;
+  repo_url?: string;
+  branch?: string;
+}) => request<App>('/apps', { method: 'POST', body: JSON.stringify(data) });
+
 export interface EnvVar {
   key: string;
   value: string;
@@ -87,7 +92,6 @@ export const listEnvs = (appId: string) => request<EnvVar[]>(`/apps/${appId}/env
 export const replaceEnvs = (appId: string, envs: EnvVar[]) =>
   request(`/apps/${appId}/envs`, { method: 'PUT', body: JSON.stringify(envs) });
 
-// Domains
 export interface DomainEntry {
   id: string;
   domain: string;
@@ -102,12 +106,22 @@ export const addDomain = (appId: string, domain: string) =>
 export const removeDomain = (appId: string, domain: string) =>
   request(`/apps/${appId}/domains/${domain}`, { method: 'DELETE' });
 
-// Settings
 export interface Settings {
   panel_domain: string | null;
   admin_username: string;
+  has_git_token: boolean;
+}
+
+export interface SystemInfo {
+  git: {
+    installed: boolean;
+    version?: string;
+  };
 }
 
 export const getSettings = () => request<Settings>('/settings');
 export const updatePanelDomain = (domain: string) =>
   request('/settings/domain', { method: 'PUT', body: JSON.stringify({ domain }) });
+export const updateGitToken = (token: string) =>
+  request('/settings/git-token', { method: 'PUT', body: JSON.stringify({ token }) });
+export const getSystemInfo = () => request<SystemInfo>('/system');
