@@ -1,0 +1,55 @@
+package api
+
+import (
+	"database/sql"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/nestops/nestops/internal/process"
+	"github.com/nestops/nestops/internal/proxy"
+)
+
+func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret string) *chi.Mux {
+	r := chi.NewRouter()
+
+	// Wire up the route remover to avoid import cycles in apps handler
+	SetRouteRemover(proxy.RemoveRoute)
+
+	authHandler := NewAuthHandler(database)
+	appsHandler := NewAppsHandler(database, pm, dataDir)
+	envsHandler := NewEnvsHandler(database)
+	domainsHandler := NewDomainsHandler(database)
+	settingsHandler := NewSettingsHandler(database)
+
+	r.Route("/api", func(r chi.Router) {
+		// Public
+		r.Post("/auth/login", authHandler.Login)
+
+		// Protected
+		r.Group(func(r chi.Router) {
+			r.Use(AuthMiddleware(jwtSecret))
+
+			r.Post("/auth/password", authHandler.ChangePassword)
+
+			r.Get("/apps", appsHandler.List)
+			r.Post("/apps", appsHandler.Create)
+			r.Get("/apps/{id}", appsHandler.Get)
+			r.Delete("/apps/{id}", appsHandler.Delete)
+			r.Post("/apps/{id}/start", appsHandler.Start)
+			r.Post("/apps/{id}/stop", appsHandler.Stop)
+			r.Post("/apps/{id}/restart", appsHandler.Restart)
+			r.Get("/apps/{id}/logs", appsHandler.Logs)
+
+			r.Get("/apps/{id}/envs", envsHandler.List)
+			r.Put("/apps/{id}/envs", envsHandler.Replace)
+
+			r.Get("/apps/{id}/domains", domainsHandler.List)
+			r.Post("/apps/{id}/domains", domainsHandler.Add)
+			r.Delete("/apps/{id}/domains/{domain}", domainsHandler.Remove)
+
+			r.Get("/settings", settingsHandler.Get)
+			r.Put("/settings/domain", settingsHandler.UpdateDomain)
+		})
+	})
+
+	return r
+}
