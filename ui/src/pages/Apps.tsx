@@ -15,6 +15,13 @@ function formatMemory(mb: number): string {
   return '—';
 }
 
+function formatCapacity(usedMb: number, totalMb: number): string {
+  if (totalMb >= 1024) {
+    return `${(usedMb / 1024).toFixed(1)} / ${(totalMb / 1024).toFixed(1)} GB`;
+  }
+  return `${usedMb.toFixed(0)} / ${totalMb.toFixed(0)} MB`;
+}
+
 function Sparkline({ data, max }: { data: number[]; max?: number }) {
   const ceil = max || Math.max(...data, 1);
   const bars = data.slice(-30);
@@ -88,16 +95,18 @@ export default function Apps() {
             </div>
             <div className="server-stat">
               <div className="server-stat-header">
-                <span className="server-stat-value">{formatMemory(latest.memory_used_mb)}</span>
+                <span className="server-stat-value">{formatCapacity(latest.memory_used_mb, latest.memory_total_mb)}</span>
                 <span className="server-stat-label">Memory</span>
               </div>
+              <span className="server-stat-pct">{(latest.memory_used_mb / latest.memory_total_mb * 100).toFixed(0)}% used</span>
               <Sparkline data={metrics.snapshots.map(s => s.memory_used_mb)} max={latest.memory_total_mb} />
             </div>
             <div className="server-stat">
               <div className="server-stat-header">
-                <span className="server-stat-value">{formatMemory(latest.disk_used_mb)}</span>
+                <span className="server-stat-value">{formatCapacity(latest.disk_used_mb, latest.disk_total_mb)}</span>
                 <span className="server-stat-label">Disk</span>
               </div>
+              <span className="server-stat-pct">{(latest.disk_used_mb / latest.disk_total_mb * 100).toFixed(0)}% used</span>
               <Sparkline data={metrics.snapshots.map(s => s.disk_used_mb)} max={latest.disk_total_mb} />
             </div>
             <div className="server-stat">
@@ -135,9 +144,9 @@ export default function Apps() {
                   <span className={`badge badge-${app.status}`}>{app.status}</span>
                 </div>
 
-                {app.repo_url && (
-                  <div className="app-card-repo">{repoShortName(app.repo_url)}</div>
-                )}
+                <div className={`app-card-repo ${!app.repo_url ? 'app-card-repo-none' : ''}`}>
+                  {app.repo_url ? repoShortName(app.repo_url) : 'No repository'}
+                </div>
 
                 <div className="app-card-metrics">
                   <div className="app-card-metric">

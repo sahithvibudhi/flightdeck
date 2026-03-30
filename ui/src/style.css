@@ -382,11 +382,16 @@ button:disabled {
 }
 
 .server-overview {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
   gap: 12px;
   margin-bottom: 24px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
 }
+
+.server-overview::-webkit-scrollbar { display: none; }
 
 .server-stat {
   display: flex;
@@ -396,6 +401,9 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  min-width: 180px;
+  flex: 1 0 0;
+  scroll-snap-align: start;
 }
 
 .server-stat-header {
@@ -405,7 +413,7 @@ button:disabled {
 }
 
 .server-stat-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   font-family: var(--font-mono);
   letter-spacing: -0.03em;
@@ -416,6 +424,13 @@ button:disabled {
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.server-stat-pct {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  margin-top: -2px;
 }
 
 .sparkline {
@@ -517,6 +532,11 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-card-repo-none {
+  opacity: 0.35;
+  font-family: var(--font-sans);
 }
 
 .app-card-metrics {
@@ -721,3 +741,46 @@ button:disabled {
 }
 
 .fade-in { animation: fade-in 0.2s ease-out; }
+
+@media (max-width: 640px) {
+  .nav { padding: 0 16px; }
+  .container { padding: 20px 16px; }
+  .container-narrow { padding: 20px 16px; }
+
+  .server-overview {
+    margin-left: -16px;
+    margin-right: -16px;
+    padding: 0 16px;
+  }
+
+  .server-stat {
+    min-width: 160px;
+    flex: 0 0 auto;
+  }
+
+  .server-stat-value { font-size: 16px; }
+
+  .app-grid { grid-template-columns: 1fr; }
+
+  .app-detail-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .app-actions { flex-wrap: wrap; }
+
+  .metrics-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .metrics-bar-item { min-width: 100px; flex: 0 0 auto; }
+
+  .env-row { flex-wrap: wrap; }
+  .env-row input:first-child { flex: 1 1 100%; }
+  .env-row input:nth-child(2) { flex: 1 1 100%; }
+
+  .deploy-form { padding: 16px; }
+  .deploy-tabs { width: 100%; }
+  .deploy-tab { flex: 1; text-align: center; }
+}

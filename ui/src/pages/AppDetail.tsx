@@ -182,7 +182,10 @@ export default function AppDetail() {
             <div className="app-detail-meta">
               <span className={`badge badge-${app.status}`}>{app.status}</span>
               <span>port {app.port}</span>
-              {app.repo_url && <span>{app.branch || 'main'}</span>}
+              {app.repo_url
+                ? <span>{app.branch || 'main'}</span>
+                : <span style={{ opacity: 0.5 }}>manual deploy</span>
+              }
             </div>
           </div>
           <div className="app-actions">
