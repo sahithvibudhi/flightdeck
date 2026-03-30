@@ -39,11 +39,13 @@ type appResponse struct {
 	RepoURL   *string  `json:"repo_url"`
 	Branch    *string  `json:"branch"`
 	Domains   []string `json:"domains"`
+	CPU       float64  `json:"cpu_percent"`
+	Memory    float64  `json:"memory_mb"`
 	CreatedAt string   `json:"created_at"`
 }
 
-func buildAppResponse(database *sql.DB, a *db.App) appResponse {
-	domains, _ := db.ListDomains(database, a.ID)
+func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
+	domains, _ := db.ListDomains(h.database, a.ID)
 	var domainNames []string
 	for _, d := range domains {
 		domainNames = append(domainNames, d.Domain)
@@ -52,6 +54,8 @@ func buildAppResponse(database *sql.DB, a *db.App) appResponse {
 		domainNames = []string{}
 	}
 
+	metrics := h.pm.GetAppMetrics(a.ID)
+
 	resp := appResponse{
 		ID:        a.ID,
 		Name:      a.Name,
@@ -59,6 +63,8 @@ func buildAppResponse(database *sql.DB, a *db.App) appResponse {
 		StartCmd:  a.StartCmd,
 		Status:    a.Status,
 		Domains:   domainNames,
+		CPU:       metrics.CPU,
+		Memory:    metrics.Memory,
 		CreatedAt: a.CreatedAt,
 	}
 	if a.RepoURL.Valid {
@@ -79,7 +85,7 @@ func (h *AppsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]appResponse, 0, len(apps))
 	for _, a := range apps {
-		resp = append(resp, buildAppResponse(h.database, &a))
+		resp = append(resp, h.buildAppResponse(&a))
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -137,7 +143,7 @@ func (h *AppsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, buildAppResponse(h.database, app))
+	writeJSON(w, http.StatusCreated, h.buildAppResponse(app))
 }
 
 func (h *AppsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +152,7 @@ func (h *AppsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, buildAppResponse(h.database, app))
+	writeJSON(w, http.StatusOK, h.buildAppResponse(app))
 }
 
 func (h *AppsHandler) Delete(w http.ResponseWriter, r *http.Request) {

@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/nestops/nestops/internal/db"
-	"github.com/nestops/nestops/internal/git"
 	"github.com/nestops/nestops/internal/proxy"
+	"github.com/nestops/nestops/internal/system"
 )
 
 type SettingsHandler struct {
@@ -106,7 +106,5 @@ func (h *SettingsHandler) UpdateGitToken(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *SettingsHandler) SystemInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"git": git.Check(),
-	})
+	writeJSON(w, http.StatusOK, system.Detect())
 }
