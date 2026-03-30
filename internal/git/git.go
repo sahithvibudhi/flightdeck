@@ -7,20 +7,6 @@ import (
 	"strings"
 )
 
-type Status struct {
-	Installed bool   `json:"installed"`
-	Version   string `json:"version,omitempty"`
-}
-
-func Check() Status {
-	out, err := exec.Command("git", "--version").Output()
-	if err != nil {
-		return Status{Installed: false}
-	}
-	version := strings.TrimSpace(strings.TrimPrefix(string(out), "git version "))
-	return Status{Installed: true, Version: version}
-}
-
 /*
 Clone fetches a repository into targetDir. When a token is provided,
 it's injected into the HTTPS URL so the clone works against private repos
