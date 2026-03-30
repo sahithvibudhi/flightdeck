@@ -1,0 +1,62 @@
+package db
+
+import (
+	"database/sql"
+	"fmt"
+
+	_ "modernc.org/sqlite"
+)
+
+var migrations = []string{
+	`CREATE TABLE IF NOT EXISTS config (
+		id              INTEGER PRIMARY KEY DEFAULT 1,
+		admin_username  TEXT NOT NULL,
+		admin_password  TEXT NOT NULL,
+		jwt_secret      TEXT NOT NULL,
+		panel_domain    TEXT,
+		created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`,
+	`CREATE TABLE IF NOT EXISTS apps (
+		id          TEXT PRIMARY KEY,
+		name        TEXT NOT NULL UNIQUE,
+		repo_url    TEXT,
+		port        INTEGER NOT NULL UNIQUE,
+		start_cmd   TEXT NOT NULL,
+		status      TEXT DEFAULT 'stopped',
+		pid         INTEGER,
+		log_path    TEXT NOT NULL,
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`,
+	`CREATE TABLE IF NOT EXISTS envs (
+		id      TEXT PRIMARY KEY,
+		app_id  TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+		key     TEXT NOT NULL,
+		value   TEXT NOT NULL,
+		UNIQUE(app_id, key)
+	)`,
+	`CREATE TABLE IF NOT EXISTS domains (
+		id         TEXT PRIMARY KEY,
+		app_id     TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+		domain     TEXT NOT NULL UNIQUE,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`,
+}
+
+func Open(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)")
+	if err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("ping database: %w", err)
+	}
+
+	for _, m := range migrations {
+		if _, err := db.Exec(m); err != nil {
+			return nil, fmt.Errorf("run migration: %w", err)
+		}
+	}
+
+	return db, nil
+}
