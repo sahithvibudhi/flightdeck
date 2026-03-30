@@ -14,6 +14,7 @@ import (
 	"github.com/nestops/nestops/internal/process"
 	"github.com/nestops/nestops/internal/proxy"
 	"github.com/nestops/nestops/internal/setup"
+	"github.com/nestops/nestops/internal/system"
 )
 
 const defaultDataDir = "/var/nestops"
@@ -83,6 +84,11 @@ func main() {
 	}
 
 	// Start process manager and restore running apps
+	if err := system.InitMetricsTable(database); err != nil {
+		log.Fatalf("failed to init metrics table: %v", err)
+	}
+	system.StartCollector(database)
+
 	pm := process.NewManager(database, dataDir)
 	if err := pm.RestoreRunning(); err != nil {
 		log.Printf("warning: failed to restore apps: %v", err)

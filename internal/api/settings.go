@@ -108,3 +108,7 @@ func (h *SettingsHandler) UpdateGitToken(w http.ResponseWriter, r *http.Request)
 func (h *SettingsHandler) SystemInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, system.Detect())
 }
+
+func (h *SettingsHandler) ServerMetrics(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, system.GetHistory(h.database))
+}

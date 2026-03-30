@@ -48,6 +48,7 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret 
 			r.Put("/settings/domain", settingsHandler.UpdateDomain)
 			r.Put("/settings/git-token", settingsHandler.UpdateGitToken)
 			r.Get("/system", settingsHandler.SystemInfo)
+			r.Get("/system/metrics", settingsHandler.ServerMetrics)
 		})
 	})
 
