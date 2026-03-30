@@ -132,3 +132,18 @@ export const updatePanelDomain = (domain: string) =>
 export const updateGitToken = (token: string) =>
   request('/settings/git-token', { method: 'PUT', body: JSON.stringify({ token }) });
 export const getSystemInfo = () => request<SystemInfo>('/system');
+
+export interface ServerSnapshot {
+  cpu_percent: number;
+  memory_used_mb: number;
+  memory_total_mb: number;
+  disk_used_mb: number;
+  disk_total_mb: number;
+  timestamp: string;
+}
+
+export interface ServerMetricsHistory {
+  snapshots: ServerSnapshot[];
+}
+
+export const getServerMetrics = () => request<ServerMetricsHistory>('/system/metrics');

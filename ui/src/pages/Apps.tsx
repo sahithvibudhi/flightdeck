@@ -1,11 +1,9 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  listApps, createApp, clearToken, getSystemInfo,
-  type App, type SystemInfo,
+  listApps, clearToken, getSystemInfo, getServerMetrics,
+  type App, type SystemInfo, type ServerMetricsHistory,
 } from '../api';
-
-type DeployMode = 'github' | 'manual';
 
 function repoShortName(url: string): string {
   return url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '');
@@ -17,25 +15,37 @@ function formatMemory(mb: number): string {
   return '—';
 }
 
+function Sparkline({ data, max }: { data: number[]; max?: number }) {
+  const ceil = max || Math.max(...data, 1);
+  const bars = data.slice(-30);
+  return (
+    <div className="sparkline">
+      {bars.map((v, i) => (
+        <div
+          key={i}
+          className={`sparkline-bar ${i === bars.length - 1 ? 'sparkline-bar-active' : ''}`}
+          style={{ height: `${Math.max((v / ceil) * 100, 2)}%` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function Apps() {
   const [apps, setApps] = useState<App[]>([]);
   const [system, setSystem] = useState<SystemInfo | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [mode, setMode] = useState<DeployMode>('github');
-  const [name, setName] = useState('');
-  const [startCmd, setStartCmd] = useState('');
-  const [repoUrl, setRepoUrl] = useState('');
-  const [branch, setBranch] = useState('main');
-  const [error, setError] = useState('');
-  const [deploying, setDeploying] = useState(false);
+  const [metrics, setMetrics] = useState<ServerMetricsHistory | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadApps();
-    loadSystem();
-    const interval = setInterval(loadApps, 5000);
+    loadAll();
+    const interval = setInterval(loadAll, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  async function loadAll() {
+    await Promise.all([loadApps(), loadSystem(), loadMetrics()]);
+  }
 
   async function loadApps() {
     try { setApps(await listApps()); } catch {}
@@ -45,43 +55,8 @@ export default function Apps() {
     try { setSystem(await getSystemInfo()); } catch {}
   }
 
-  function inferName(url: string) {
-    const parts = url.replace(/\.git$/, '').split('/');
-    return parts[parts.length - 1] || '';
-  }
-
-  function handleRepoUrlChange(url: string) {
-    setRepoUrl(url);
-    if (!name || name === inferName(repoUrl)) {
-      setName(inferName(url));
-    }
-  }
-
-  async function handleCreate(e: FormEvent) {
-    e.preventDefault();
-    setError('');
-    setDeploying(true);
-    try {
-      const payload: Parameters<typeof createApp>[0] = {
-        name,
-        start_command: startCmd,
-      };
-      if (mode === 'github' && repoUrl) {
-        payload.repo_url = repoUrl;
-        payload.branch = branch;
-      }
-      await createApp(payload);
-      setName('');
-      setStartCmd('');
-      setRepoUrl('');
-      setBranch('main');
-      setShowForm(false);
-      loadApps();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setDeploying(false);
-    }
+  async function loadMetrics() {
+    try { setMetrics(await getServerMetrics()); } catch {}
   }
 
   function handleLogout() {
@@ -89,7 +64,7 @@ export default function Apps() {
     navigate('/login');
   }
 
-  const installed = system?.runtimes.filter(r => r.installed) || [];
+  const latest = metrics?.snapshots?.[metrics.snapshots.length - 1];
 
   return (
     <div className="layout">
@@ -102,131 +77,54 @@ export default function Apps() {
       </nav>
       <div className="container">
 
-        {system && (
-          <div className="runtime-bar fade-in">
-            <span className="runtime-bar-label">
-              {system.os}/{system.arch}
-            </span>
-            <div className="runtime-bar-items">
-              {system.runtimes.map(r => (
-                <span
-                  key={r.name}
-                  className={`runtime-pill ${r.installed ? 'runtime-pill-ok' : 'runtime-pill-missing'}`}
-                  title={r.installed ? `${r.name} ${r.version}` : `${r.name} not installed`}
-                >
-                  <span className="runtime-dot" />
-                  {r.name}
-                  {r.installed && <span className="runtime-version">{r.version}</span>}
-                </span>
-              ))}
+        {latest && metrics && (
+          <div className="server-overview fade-in">
+            <div className="server-stat">
+              <div className="server-stat-header">
+                <span className="server-stat-value">{latest.cpu_percent.toFixed(0)}%</span>
+                <span className="server-stat-label">CPU</span>
+              </div>
+              <Sparkline data={metrics.snapshots.map(s => s.cpu_percent)} max={100} />
+            </div>
+            <div className="server-stat">
+              <div className="server-stat-header">
+                <span className="server-stat-value">{formatMemory(latest.memory_used_mb)}</span>
+                <span className="server-stat-label">Memory</span>
+              </div>
+              <Sparkline data={metrics.snapshots.map(s => s.memory_used_mb)} max={latest.memory_total_mb} />
+            </div>
+            <div className="server-stat">
+              <div className="server-stat-header">
+                <span className="server-stat-value">{formatMemory(latest.disk_used_mb)}</span>
+                <span className="server-stat-label">Disk</span>
+              </div>
+              <Sparkline data={metrics.snapshots.map(s => s.disk_used_mb)} max={latest.disk_total_mb} />
+            </div>
+            <div className="server-stat">
+              <div className="server-stat-header">
+                <span className="server-stat-value">{apps.filter(a => a.status === 'running').length}/{apps.length}</span>
+                <span className="server-stat-label">Apps</span>
+              </div>
+              {system && (
+                <div className="runtime-bar-items" style={{ marginTop: 4 }}>
+                  {system.runtimes.filter(r => r.installed).map(r => (
+                    <span key={r.name} className="runtime-pill runtime-pill-ok" style={{ fontSize: 10, padding: '0 6px' }}>
+                      <span className="runtime-dot" />
+                      {r.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
 
         <div className="page-header">
           <span className="page-title">Deployments</span>
-          <button
-            className={showForm ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm'}
-            onClick={() => setShowForm(!showForm)}
-          >
-            {showForm ? 'Cancel' : 'New app'}
-          </button>
+          <Link to="/new" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
+            New app
+          </Link>
         </div>
-
-        {showForm && (
-          <div className="deploy-form fade-in">
-            <div className="deploy-tabs">
-              <button
-                className={`deploy-tab ${mode === 'github' ? 'active' : ''}`}
-                onClick={() => setMode('github')}
-                type="button"
-              >
-                Import Git Repository
-              </button>
-              <button
-                className={`deploy-tab ${mode === 'manual' ? 'active' : ''}`}
-                onClick={() => setMode('manual')}
-                type="button"
-              >
-                Manual
-              </button>
-            </div>
-
-            <form onSubmit={handleCreate}>
-              {mode === 'github' && (
-                <>
-                  <div className="form-group">
-                    <label>Repository URL</label>
-                    <input
-                      value={repoUrl}
-                      onChange={e => handleRepoUrlChange(e.target.value)}
-                      placeholder="https://github.com/you/your-repo"
-                      autoFocus
-                    />
-                    <p className="form-hint">Private repos require a Git token in Settings</p>
-                  </div>
-                  <div className="flex gap-sm">
-                    <div className="form-group" style={{ flex: 1 }}>
-                      <label>App name</label>
-                      <input
-                        value={name}
-                        onChange={e => setName(e.target.value)}
-                        placeholder="my-app"
-                      />
-                    </div>
-                    <div className="form-group" style={{ flex: 0, minWidth: 140 }}>
-                      <label>Branch</label>
-                      <input
-                        value={branch}
-                        onChange={e => setBranch(e.target.value)}
-                        placeholder="main"
-                      />
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {mode === 'manual' && (
-                <div className="form-group">
-                  <label>App name</label>
-                  <input
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="my-app"
-                    autoFocus
-                  />
-                </div>
-              )}
-
-              <div className="form-group">
-                <label>Start command</label>
-                <input
-                  value={startCmd}
-                  onChange={e => setStartCmd(e.target.value)}
-                  placeholder="npm start"
-                />
-                {installed.length > 0 && (
-                  <p className="form-hint">
-                    Available: {installed.map(r => r.name.toLowerCase()).join(', ')}
-                  </p>
-                )}
-              </div>
-
-              {error && <p className="error-msg">{error}</p>}
-
-              <button type="submit" className="btn btn-primary" disabled={deploying}>
-                {deploying ? (
-                  <>
-                    <span className="spinner" />
-                    {mode === 'github' ? 'Cloning...' : 'Creating...'}
-                  </>
-                ) : (
-                  mode === 'github' ? 'Import & Deploy' : 'Create App'
-                )}
-              </button>
-            </form>
-          </div>
-        )}
 
         {apps.length > 0 ? (
           <div className="app-grid">
@@ -270,12 +168,12 @@ export default function Apps() {
               </Link>
             ))}
           </div>
-        ) : !showForm && (
+        ) : (
           <div className="empty-state">
             <p>No deployments yet</p>
-            <button className="btn btn-primary btn-sm" onClick={() => setShowForm(true)}>
+            <Link to="/new" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
               Deploy your first app
-            </button>
+            </Link>
           </div>
         )}
       </div>
