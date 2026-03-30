@@ -1,6 +1,9 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { listApps, createApp, clearToken, type App } from '../api';
+import {
+  listApps, createApp, clearToken, getSystemInfo,
+  type App, type SystemInfo,
+} from '../api';
 
 type DeployMode = 'github' | 'manual';
 
@@ -8,8 +11,15 @@ function repoShortName(url: string): string {
   return url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '');
 }
 
+function formatMemory(mb: number): string {
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  if (mb > 0) return `${mb.toFixed(1)} MB`;
+  return '—';
+}
+
 export default function Apps() {
   const [apps, setApps] = useState<App[]>([]);
+  const [system, setSystem] = useState<SystemInfo | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [mode, setMode] = useState<DeployMode>('github');
   const [name, setName] = useState('');
@@ -20,10 +30,19 @@ export default function Apps() {
   const [deploying, setDeploying] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => { loadApps(); }, []);
+  useEffect(() => {
+    loadApps();
+    loadSystem();
+    const interval = setInterval(loadApps, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function loadApps() {
     try { setApps(await listApps()); } catch {}
+  }
+
+  async function loadSystem() {
+    try { setSystem(await getSystemInfo()); } catch {}
   }
 
   function inferName(url: string) {
@@ -70,6 +89,8 @@ export default function Apps() {
     navigate('/login');
   }
 
+  const installed = system?.runtimes.filter(r => r.installed) || [];
+
   return (
     <div className="layout">
       <nav className="nav">
@@ -80,6 +101,28 @@ export default function Apps() {
         </div>
       </nav>
       <div className="container">
+
+        {system && (
+          <div className="runtime-bar fade-in">
+            <span className="runtime-bar-label">
+              {system.os}/{system.arch}
+            </span>
+            <div className="runtime-bar-items">
+              {system.runtimes.map(r => (
+                <span
+                  key={r.name}
+                  className={`runtime-pill ${r.installed ? 'runtime-pill-ok' : 'runtime-pill-missing'}`}
+                  title={r.installed ? `${r.name} ${r.version}` : `${r.name} not installed`}
+                >
+                  <span className="runtime-dot" />
+                  {r.name}
+                  {r.installed && <span className="runtime-version">{r.version}</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="page-header">
           <span className="page-title">Deployments</span>
           <button
@@ -162,6 +205,11 @@ export default function Apps() {
                   onChange={e => setStartCmd(e.target.value)}
                   placeholder="npm start"
                 />
+                {installed.length > 0 && (
+                  <p className="form-hint">
+                    Available: {installed.map(r => r.name.toLowerCase()).join(', ')}
+                  </p>
+                )}
               </div>
 
               {error && <p className="error-msg">{error}</p>}
@@ -181,19 +229,44 @@ export default function Apps() {
         )}
 
         {apps.length > 0 ? (
-          <div className="app-list">
+          <div className="app-grid">
             {apps.map(app => (
-              <Link to={`/apps/${app.id}`} key={app.id} className="app-row">
-                <div className="app-info">
-                  <span className="app-name">{app.name}</span>
+              <Link to={`/apps/${app.id}`} key={app.id} className="app-card">
+                <div className="app-card-header">
+                  <span className="app-card-name">{app.name}</span>
                   <span className={`badge badge-${app.status}`}>{app.status}</span>
-                  {app.repo_url && (
-                    <span className="app-repo">{repoShortName(app.repo_url)}</span>
-                  )}
                 </div>
-                <div className="app-meta">
-                  <span>:{app.port}</span>
+
+                {app.repo_url && (
+                  <div className="app-card-repo">{repoShortName(app.repo_url)}</div>
+                )}
+
+                <div className="app-card-metrics">
+                  <div className="app-card-metric">
+                    <span className="app-card-metric-value">
+                      {app.status === 'running' ? `${app.cpu_percent}%` : '—'}
+                    </span>
+                    <span className="app-card-metric-label">CPU</span>
+                  </div>
+                  <div className="app-card-metric">
+                    <span className="app-card-metric-value">
+                      {app.status === 'running' ? formatMemory(app.memory_mb) : '—'}
+                    </span>
+                    <span className="app-card-metric-label">Memory</span>
+                  </div>
+                  <div className="app-card-metric">
+                    <span className="app-card-metric-value">:{app.port}</span>
+                    <span className="app-card-metric-label">Port</span>
+                  </div>
                 </div>
+
+                {app.domains.length > 0 && (
+                  <div className="app-card-domains">
+                    {app.domains.map(d => (
+                      <span key={d} className="app-card-domain">{d}</span>
+                    ))}
+                  </div>
+                )}
               </Link>
             ))}
           </div>

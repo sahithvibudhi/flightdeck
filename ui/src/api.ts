@@ -63,6 +63,8 @@ export interface App {
   repo_url: string | null;
   branch: string | null;
   domains: string[];
+  cpu_percent: number;
+  memory_mb: number;
   created_at: string;
 }
 
@@ -112,11 +114,16 @@ export interface Settings {
   has_git_token: boolean;
 }
 
+export interface RuntimeInfo {
+  name: string;
+  version: string;
+  installed: boolean;
+}
+
 export interface SystemInfo {
-  git: {
-    installed: boolean;
-    version?: string;
-  };
+  runtimes: RuntimeInfo[];
+  os: string;
+  arch: string;
 }
 
 export const getSettings = () => request<Settings>('/settings');

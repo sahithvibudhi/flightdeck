@@ -6,6 +6,12 @@ import {
   type App, type EnvVar, type DomainEntry,
 } from '../api';
 
+function formatMemory(mb: number): string {
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  if (mb > 0) return `${mb.toFixed(1)} MB`;
+  return '—';
+}
+
 export default function AppDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -23,8 +29,12 @@ export default function AppDetail() {
   useEffect(() => {
     if (!id) return;
     loadAll();
-    const interval = setInterval(loadLogs, 3000);
-    return () => clearInterval(interval);
+    const logInterval = setInterval(loadLogs, 3000);
+    const metricInterval = setInterval(loadApp, 5000);
+    return () => {
+      clearInterval(logInterval);
+      clearInterval(metricInterval);
+    };
   }, [id]);
 
   useEffect(() => {
@@ -219,6 +229,23 @@ export default function AppDetail() {
 
         {pullOutput && (
           <div className="pull-output fade-in">{pullOutput}</div>
+        )}
+
+        {app.status === 'running' && (
+          <div className="metrics-bar fade-in">
+            <div className="metrics-bar-item">
+              <span className="metrics-bar-value">{app.cpu_percent}%</span>
+              <span className="metrics-bar-label">CPU</span>
+            </div>
+            <div className="metrics-bar-item">
+              <span className="metrics-bar-value">{formatMemory(app.memory_mb)}</span>
+              <span className="metrics-bar-label">Memory</span>
+            </div>
+            <div className="metrics-bar-item">
+              <span className="metrics-bar-value">:{app.port}</span>
+              <span className="metrics-bar-label">Port</span>
+            </div>
+          </div>
         )}
 
         <div className="section mt-md">

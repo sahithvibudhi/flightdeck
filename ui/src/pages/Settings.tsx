@@ -16,9 +16,7 @@ export default function Settings() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    loadAll();
-  }, []);
+  useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
     try {
@@ -98,22 +96,27 @@ export default function Settings() {
         {error && <p className="error-msg" style={{ marginBottom: 16 }}>{error}</p>}
 
         <div className="settings-grid">
-          <div className="card">
-            <h2>System</h2>
-            {system && (
-              <div className="system-check">
-                {system.git.installed ? (
-                  <span className="system-check-ok">
-                    Git {system.git.version}
-                  </span>
-                ) : (
-                  <span className="system-check-fail">
-                    Git is not installed
-                  </span>
-                )}
+          {system && (
+            <div className="card">
+              <h2>System</h2>
+              <div className="runtime-grid">
+                {system.runtimes.map(r => (
+                  <div key={r.name} className={`runtime-card ${r.installed ? '' : 'runtime-card-missing'}`}>
+                    <div className="runtime-card-header">
+                      <span className={`runtime-dot ${r.installed ? 'runtime-dot-ok' : 'runtime-dot-fail'}`} />
+                      <span className="runtime-card-name">{r.name}</span>
+                    </div>
+                    <span className="runtime-card-version">
+                      {r.installed ? r.version : 'Not installed'}
+                    </span>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
+              <p className="form-hint mt-sm">
+                {system.os}/{system.arch} — Install runtimes via SSH to enable their start commands
+              </p>
+            </div>
+          )}
 
           <div className="card">
             <h2>Git Authentication</h2>
@@ -142,7 +145,7 @@ export default function Settings() {
                     placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                   />
                   <p className="form-hint">
-                    Required for private repositories. Create one at GitHub → Settings → Developer settings → Personal access tokens.
+                    Required for private repositories. Create at GitHub → Settings → Developer settings → Tokens.
                   </p>
                 </div>
                 <button type="submit" className="btn btn-primary btn-sm" disabled={!gitToken}>
