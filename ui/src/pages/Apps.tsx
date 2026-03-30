@@ -1,6 +1,6 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { listApps, createApp, clearToken, App } from '../api';
+import { listApps, createApp, clearToken, type App } from '../api';
 
 export default function Apps() {
   const [apps, setApps] = useState<App[]>([]);

@@ -2,11 +2,13 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 
+	nestops "github.com/nestops/nestops"
 	"github.com/nestops/nestops/internal/api"
 	"github.com/nestops/nestops/internal/db"
 	"github.com/nestops/nestops/internal/process"
@@ -86,8 +88,15 @@ func main() {
 		log.Printf("warning: failed to restore apps: %v", err)
 	}
 
+	// Prepare embedded UI
+	uiDist, err := fs.Sub(nestops.UIFiles, "ui/dist")
+	if err != nil {
+		log.Fatalf("failed to load embedded UI: %v", err)
+	}
+
 	// Start HTTP server
 	router := api.NewRouter(database, pm, dataDir, cfg.JWTSecret)
+	router.NotFound(api.StaticHandler(uiDist).ServeHTTP)
 
 	addr := ":3000"
 	fmt.Printf("nestops is running on %s\n", addr)

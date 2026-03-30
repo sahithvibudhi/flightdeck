@@ -1,9 +1,9 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   getApp, deleteApp, startApp, stopApp, restartApp,
   getAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
-  App, EnvVar, DomainEntry,
+  type App, type EnvVar, type DomainEntry,
 } from '../api';
 
 export default function AppDetail() {
