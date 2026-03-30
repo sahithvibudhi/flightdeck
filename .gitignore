@@ -1,0 +1,17 @@
+# Binary
+/nestops
+dist/
+
+# UI
+ui/node_modules/
+ui/dist/
+
+# Data
+*.db
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
