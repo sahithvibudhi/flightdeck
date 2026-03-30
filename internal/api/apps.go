@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/nestops/nestops/internal/db"
+	"github.com/nestops/nestops/internal/git"
 	"github.com/nestops/nestops/internal/process"
 )
 
@@ -25,6 +26,8 @@ func NewAppsHandler(database *sql.DB, pm *process.Manager, dataDir string) *Apps
 type createAppRequest struct {
 	Name     string `json:"name"`
 	StartCmd string `json:"start_command"`
+	RepoURL  string `json:"repo_url"`
+	Branch   string `json:"branch"`
 }
 
 type appResponse struct {
@@ -33,8 +36,38 @@ type appResponse struct {
 	Port      int      `json:"port"`
 	StartCmd  string   `json:"start_command"`
 	Status    string   `json:"status"`
+	RepoURL   *string  `json:"repo_url"`
+	Branch    *string  `json:"branch"`
 	Domains   []string `json:"domains"`
 	CreatedAt string   `json:"created_at"`
+}
+
+func buildAppResponse(database *sql.DB, a *db.App) appResponse {
+	domains, _ := db.ListDomains(database, a.ID)
+	var domainNames []string
+	for _, d := range domains {
+		domainNames = append(domainNames, d.Domain)
+	}
+	if domainNames == nil {
+		domainNames = []string{}
+	}
+
+	resp := appResponse{
+		ID:        a.ID,
+		Name:      a.Name,
+		Port:      a.Port,
+		StartCmd:  a.StartCmd,
+		Status:    a.Status,
+		Domains:   domainNames,
+		CreatedAt: a.CreatedAt,
+	}
+	if a.RepoURL.Valid {
+		resp.RepoURL = &a.RepoURL.String
+	}
+	if a.Branch.Valid {
+		resp.Branch = &a.Branch.String
+	}
+	return resp
 }
 
 func (h *AppsHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -44,26 +77,9 @@ func (h *AppsHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var resp []appResponse
+	resp := make([]appResponse, 0, len(apps))
 	for _, a := range apps {
-		domains, _ := db.ListDomains(h.database, a.ID)
-		var domainNames []string
-		for _, d := range domains {
-			domainNames = append(domainNames, d.Domain)
-		}
-		resp = append(resp, appResponse{
-			ID:        a.ID,
-			Name:      a.Name,
-			Port:      a.Port,
-			StartCmd:  a.StartCmd,
-			Status:    a.Status,
-			Domains:   domainNames,
-			CreatedAt: a.CreatedAt,
-		})
-	}
-
-	if resp == nil {
-		resp = []appResponse{}
+		resp = append(resp, buildAppResponse(h.database, &a))
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -80,65 +96,66 @@ func (h *AppsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Branch == "" {
+		req.Branch = "main"
+	}
+
 	port, err := db.NextPort(h.database)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to assign port"})
 		return
 	}
 
-	logPath := filepath.Join(h.dataDir, "apps", req.Name, "app.log")
-	app, err := db.InsertApp(h.database, req.Name, req.StartCmd, port, logPath)
+	appDir := filepath.Join(h.dataDir, "apps", req.Name)
+	logPath := filepath.Join(appDir, "app.log")
+
+	var repoURL, branch sql.NullString
+	if req.RepoURL != "" {
+		repoURL = sql.NullString{String: req.RepoURL, Valid: true}
+		branch = sql.NullString{String: req.Branch, Valid: true}
+
+		cfg, err := db.GetConfig(h.database)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read config"})
+			return
+		}
+
+		var token string
+		if cfg.GitToken.Valid {
+			token = cfg.GitToken.String
+		}
+
+		if err := git.Clone(req.RepoURL, appDir, req.Branch, token); err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+
+	app, err := db.InsertApp(h.database, req.Name, req.StartCmd, port, logPath, repoURL, branch)
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "app name already exists or port conflict"})
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, appResponse{
-		ID:        app.ID,
-		Name:      app.Name,
-		Port:      app.Port,
-		StartCmd:  app.StartCmd,
-		Status:    app.Status,
-		Domains:   []string{},
-		CreatedAt: app.CreatedAt,
-	})
+	writeJSON(w, http.StatusCreated, buildAppResponse(h.database, app))
 }
 
 func (h *AppsHandler) Get(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	app, err := db.GetApp(h.database, id)
+	app, err := db.GetApp(h.database, chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
 		return
 	}
-
-	domains, _ := db.ListDomains(h.database, app.ID)
-	var domainNames []string
-	for _, d := range domains {
-		domainNames = append(domainNames, d.Domain)
-	}
-
-	writeJSON(w, http.StatusOK, appResponse{
-		ID:        app.ID,
-		Name:      app.Name,
-		Port:      app.Port,
-		StartCmd:  app.StartCmd,
-		Status:    app.Status,
-		Domains:   domainNames,
-		CreatedAt: app.CreatedAt,
-	})
+	writeJSON(w, http.StatusOK, buildAppResponse(h.database, app))
 }
 
 func (h *AppsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
-	// Stop the app if running
 	h.pm.StopApp(id)
 
-	// Remove all caddy routes for this app's domains
 	domains, _ := db.ListDomains(h.database, id)
 	for _, d := range domains {
-		// Best effort removal from Caddy
 		_ = removeRoute(d.ID)
 	}
 
@@ -151,8 +168,7 @@ func (h *AppsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AppsHandler) Start(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	app, err := db.GetApp(h.database, id)
+	app, err := db.GetApp(h.database, chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
 		return
@@ -167,18 +183,15 @@ func (h *AppsHandler) Start(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AppsHandler) Stop(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if err := h.pm.StopApp(id); err != nil {
+	if err := h.pm.StopApp(chi.URLParam(r, "id")); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
 	writeJSON(w, http.StatusOK, map[string]string{"message": "app stopped"})
 }
 
 func (h *AppsHandler) Restart(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	app, err := db.GetApp(h.database, id)
+	app, err := db.GetApp(h.database, chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
 		return
@@ -192,9 +205,30 @@ func (h *AppsHandler) Restart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"message": "app restarted"})
 }
 
+func (h *AppsHandler) Pull(w http.ResponseWriter, r *http.Request) {
+	app, err := db.GetApp(h.database, chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
+		return
+	}
+
+	if !app.RepoURL.Valid {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "app is not linked to a git repository"})
+		return
+	}
+
+	appDir := filepath.Join(h.dataDir, "apps", app.Name)
+	output, err := git.Pull(appDir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"output": output})
+}
+
 func (h *AppsHandler) Logs(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	app, err := db.GetApp(h.database, id)
+	app, err := db.GetApp(h.database, chi.URLParam(r, "id"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
 		return
@@ -220,8 +254,6 @@ func (h *AppsHandler) Logs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"lines": logLines})
 }
 
-// removeRoute is a package-level helper that calls proxy.RemoveRoute
-// It's set via SetRouteRemover to avoid import cycles.
 var removeRoute = func(id string) error { return nil }
 
 func SetRouteRemover(fn func(string) error) {

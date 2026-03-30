@@ -40,18 +40,15 @@ func (m *Manager) StartApp(app *db.App) error {
 		return fmt.Errorf("create app dir: %w", err)
 	}
 
-	// Write env file
 	if err := m.writeEnvFile(app.ID, appDir); err != nil {
 		return fmt.Errorf("write env file: %w", err)
 	}
 
-	// Open log file
 	logFile, err := os.OpenFile(app.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("open log file: %w", err)
 	}
 
-	// Parse command
 	parts := strings.Fields(app.StartCmd)
 	if len(parts) == 0 {
 		return fmt.Errorf("empty start command")
@@ -74,7 +71,6 @@ func (m *Manager) StartApp(app *db.App) error {
 		return fmt.Errorf("update status: %w", err)
 	}
 
-	// Watch process in background
 	go m.watchProcess(app.ID, cmd, logFile)
 
 	return nil

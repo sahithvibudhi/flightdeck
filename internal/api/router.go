@@ -11,7 +11,6 @@ import (
 func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret string) *chi.Mux {
 	r := chi.NewRouter()
 
-	// Wire up the route remover to avoid import cycles in apps handler
 	SetRouteRemover(proxy.RemoveRoute)
 
 	authHandler := NewAuthHandler(database)
@@ -21,10 +20,8 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret 
 	settingsHandler := NewSettingsHandler(database)
 
 	r.Route("/api", func(r chi.Router) {
-		// Public
 		r.Post("/auth/login", authHandler.Login)
 
-		// Protected
 		r.Group(func(r chi.Router) {
 			r.Use(AuthMiddleware(jwtSecret))
 
@@ -37,6 +34,7 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret 
 			r.Post("/apps/{id}/start", appsHandler.Start)
 			r.Post("/apps/{id}/stop", appsHandler.Stop)
 			r.Post("/apps/{id}/restart", appsHandler.Restart)
+			r.Post("/apps/{id}/pull", appsHandler.Pull)
 			r.Get("/apps/{id}/logs", appsHandler.Logs)
 
 			r.Get("/apps/{id}/envs", envsHandler.List)
@@ -48,6 +46,8 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret 
 
 			r.Get("/settings", settingsHandler.Get)
 			r.Put("/settings/domain", settingsHandler.UpdateDomain)
+			r.Put("/settings/git-token", settingsHandler.UpdateGitToken)
+			r.Get("/system", settingsHandler.SystemInfo)
 		})
 	})
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/nestops/nestops/internal/db"
+	"github.com/nestops/nestops/internal/git"
 	"github.com/nestops/nestops/internal/proxy"
 )
 
@@ -20,6 +21,7 @@ func NewSettingsHandler(database *sql.DB) *SettingsHandler {
 type settingsResponse struct {
 	PanelDomain   *string `json:"panel_domain"`
 	AdminUsername string  `json:"admin_username"`
+	HasGitToken   bool    `json:"has_git_token"`
 }
 
 func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -29,7 +31,10 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := settingsResponse{AdminUsername: cfg.AdminUsername}
+	resp := settingsResponse{
+		AdminUsername: cfg.AdminUsername,
+		HasGitToken:  cfg.GitToken.Valid && cfg.GitToken.String != "",
+	}
 	if cfg.PanelDomain.Valid {
 		resp.PanelDomain = &cfg.PanelDomain.String
 	}
@@ -48,7 +53,6 @@ func (h *SettingsHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove old panel route if exists
 	cfg, err := db.GetConfig(h.database)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get config"})
@@ -59,7 +63,6 @@ func (h *SettingsHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Domain != "" {
-		// Add new panel route
 		if err := proxy.AddRoute("nestops-panel", req.Domain, 3000); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to configure domain"})
 			return
@@ -76,4 +79,34 @@ func (h *SettingsHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "domain updated"})
+}
+
+type updateGitTokenRequest struct {
+	Token string `json:"token"`
+}
+
+func (h *SettingsHandler) UpdateGitToken(w http.ResponseWriter, r *http.Request) {
+	var req updateGitTokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	var token sql.NullString
+	if req.Token != "" {
+		token = sql.NullString{String: req.Token, Valid: true}
+	}
+
+	if err := db.UpdateGitToken(h.database, token); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save token"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "git token updated"})
+}
+
+func (h *SettingsHandler) SystemInfo(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"git": git.Check(),
+	})
 }
