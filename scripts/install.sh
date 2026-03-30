@@ -7,7 +7,6 @@ VERSION="latest"
 INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/var/nestops"
 
-# Map architecture names
 case "$ARCH" in
   x86_64)  ARCH="amd64" ;;
   aarch64) ARCH="arm64" ;;
@@ -16,26 +15,43 @@ case "$ARCH" in
 esac
 
 echo "Installing nestops..."
+echo ""
 
-# Download binary
+echo "Checking dependencies..."
+
+if ! command -v git &>/dev/null; then
+  echo "  Git not found. Installing..."
+  if command -v apt-get &>/dev/null; then
+    apt-get update -qq && apt-get install -y -qq git
+  elif command -v yum &>/dev/null; then
+    yum install -y -q git
+  elif command -v apk &>/dev/null; then
+    apk add --quiet git
+  else
+    echo "  Could not install git automatically. Please install git and try again."
+    exit 1
+  fi
+fi
+echo "  git $(git --version | cut -d' ' -f3)"
+
+if ! command -v caddy &>/dev/null; then
+  echo "  Caddy not found. Installing..."
+  curl -sSL "https://caddyserver.com/api/download?os=${OS}&arch=${ARCH}" \
+    -o /usr/local/bin/caddy
+  chmod +x /usr/local/bin/caddy
+fi
+echo "  caddy $(caddy version | cut -d' ' -f1)"
+
+echo ""
+
 curl -sSL "https://github.com/nestops/nestops/releases/download/${VERSION}/nestops-${OS}-${ARCH}" \
   -o /tmp/nestops
 chmod +x /tmp/nestops
 mv /tmp/nestops "$INSTALL_DIR/nestops"
 
-# Create data directory
 mkdir -p "$DATA_DIR/apps"
 mkdir -p "$DATA_DIR/caddy"
 
-# Install Caddy if not present
-if ! command -v caddy &>/dev/null; then
-  echo "Installing Caddy..."
-  curl -sSL "https://caddyserver.com/api/download?os=${OS}&arch=${ARCH}" \
-    -o /usr/local/bin/caddy
-  chmod +x /usr/local/bin/caddy
-fi
-
-# Install systemd service
 cat > /etc/systemd/system/nestops.service <<EOF
 [Unit]
 Description=nestops
@@ -54,10 +70,8 @@ EOF
 systemctl daemon-reload
 systemctl enable nestops
 
-# Run setup wizard
 /usr/local/bin/nestops
 
-# Start service
 systemctl start nestops
 
 echo ""
