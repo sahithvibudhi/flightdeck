@@ -6,20 +6,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// Config
-
 type Config struct {
 	AdminUsername string
 	AdminPassword string
 	JWTSecret     string
 	PanelDomain   sql.NullString
+	GitToken      sql.NullString
 }
 
 func GetConfig(db *sql.DB) (*Config, error) {
 	var c Config
 	err := db.QueryRow(
-		`SELECT admin_username, admin_password, jwt_secret, panel_domain FROM config WHERE id = 1`,
-	).Scan(&c.AdminUsername, &c.AdminPassword, &c.JWTSecret, &c.PanelDomain)
+		`SELECT admin_username, admin_password, jwt_secret, panel_domain, git_token FROM config WHERE id = 1`,
+	).Scan(&c.AdminUsername, &c.AdminPassword, &c.JWTSecret, &c.PanelDomain, &c.GitToken)
 	if err != nil {
 		return nil, err
 	}
@@ -28,8 +27,8 @@ func GetConfig(db *sql.DB) (*Config, error) {
 
 func InsertConfig(db *sql.DB, c *Config) error {
 	_, err := db.Exec(
-		`INSERT INTO config (admin_username, admin_password, jwt_secret, panel_domain) VALUES (?, ?, ?, ?)`,
-		c.AdminUsername, c.AdminPassword, c.JWTSecret, c.PanelDomain,
+		`INSERT INTO config (admin_username, admin_password, jwt_secret, panel_domain, git_token) VALUES (?, ?, ?, ?, ?)`,
+		c.AdminUsername, c.AdminPassword, c.JWTSecret, c.PanelDomain, c.GitToken,
 	)
 	return err
 }
@@ -44,12 +43,16 @@ func UpdatePassword(db *sql.DB, hash string) error {
 	return err
 }
 
-// Apps
+func UpdateGitToken(db *sql.DB, token sql.NullString) error {
+	_, err := db.Exec(`UPDATE config SET git_token = ? WHERE id = 1`, token)
+	return err
+}
 
 type App struct {
 	ID        string
 	Name      string
 	RepoURL   sql.NullString
+	Branch    sql.NullString
 	Port      int
 	StartCmd  string
 	Status    string
@@ -59,7 +62,9 @@ type App struct {
 }
 
 func ListApps(db *sql.DB) ([]App, error) {
-	rows, err := db.Query(`SELECT id, name, repo_url, port, start_cmd, status, pid, log_path, created_at FROM apps ORDER BY created_at`)
+	rows, err := db.Query(
+		`SELECT id, name, repo_url, branch, port, start_cmd, status, pid, log_path, created_at FROM apps ORDER BY created_at`,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +73,7 @@ func ListApps(db *sql.DB) ([]App, error) {
 	var apps []App
 	for rows.Next() {
 		var a App
-		if err := rows.Scan(&a.ID, &a.Name, &a.RepoURL, &a.Port, &a.StartCmd, &a.Status, &a.PID, &a.LogPath, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.RepoURL, &a.Branch, &a.Port, &a.StartCmd, &a.Status, &a.PID, &a.LogPath, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		apps = append(apps, a)
@@ -79,8 +84,8 @@ func ListApps(db *sql.DB) ([]App, error) {
 func GetApp(db *sql.DB, id string) (*App, error) {
 	var a App
 	err := db.QueryRow(
-		`SELECT id, name, repo_url, port, start_cmd, status, pid, log_path, created_at FROM apps WHERE id = ?`, id,
-	).Scan(&a.ID, &a.Name, &a.RepoURL, &a.Port, &a.StartCmd, &a.Status, &a.PID, &a.LogPath, &a.CreatedAt)
+		`SELECT id, name, repo_url, branch, port, start_cmd, status, pid, log_path, created_at FROM apps WHERE id = ?`, id,
+	).Scan(&a.ID, &a.Name, &a.RepoURL, &a.Branch, &a.Port, &a.StartCmd, &a.Status, &a.PID, &a.LogPath, &a.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -99,11 +104,11 @@ func NextPort(db *sql.DB) (int, error) {
 	return int(port.Int64) + 1, nil
 }
 
-func InsertApp(db *sql.DB, name, startCmd string, port int, logPath string) (*App, error) {
+func InsertApp(db *sql.DB, name, startCmd string, port int, logPath string, repoURL, branch sql.NullString) (*App, error) {
 	id := uuid.New().String()
 	_, err := db.Exec(
-		`INSERT INTO apps (id, name, port, start_cmd, status, log_path) VALUES (?, ?, ?, ?, 'stopped', ?)`,
-		id, name, port, startCmd, logPath,
+		`INSERT INTO apps (id, name, repo_url, branch, port, start_cmd, status, log_path) VALUES (?, ?, ?, ?, ?, ?, 'stopped', ?)`,
+		id, name, repoURL, branch, port, startCmd, logPath,
 	)
 	if err != nil {
 		return nil, err
@@ -120,8 +125,6 @@ func DeleteApp(db *sql.DB, id string) error {
 	_, err := db.Exec(`DELETE FROM apps WHERE id = ?`, id)
 	return err
 }
-
-// Envs
 
 type Env struct {
 	ID    string
@@ -168,8 +171,6 @@ func ReplaceEnvs(db *sql.DB, appID string, envs []Env) error {
 
 	return tx.Commit()
 }
-
-// Domains
 
 type Domain struct {
 	ID        string

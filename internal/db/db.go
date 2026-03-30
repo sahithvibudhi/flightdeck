@@ -14,12 +14,14 @@ var migrations = []string{
 		admin_password  TEXT NOT NULL,
 		jwt_secret      TEXT NOT NULL,
 		panel_domain    TEXT,
+		git_token       TEXT,
 		created_at      DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`,
 	`CREATE TABLE IF NOT EXISTS apps (
 		id          TEXT PRIMARY KEY,
 		name        TEXT NOT NULL UNIQUE,
 		repo_url    TEXT,
+		branch      TEXT DEFAULT 'main',
 		port        INTEGER NOT NULL UNIQUE,
 		start_cmd   TEXT NOT NULL,
 		status      TEXT DEFAULT 'stopped',
