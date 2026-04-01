@@ -120,8 +120,14 @@ export interface RuntimeInfo {
   installed: boolean;
 }
 
+export interface CaddyStatus {
+  running: boolean;
+  version?: string;
+}
+
 export interface SystemInfo {
   runtimes: RuntimeInfo[];
+  caddy: CaddyStatus;
   os: string;
   arch: string;
 }

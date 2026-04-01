@@ -1,9 +1,11 @@
 package system
 
 import (
+	"net/http"
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 )
 
 type Runtime struct {
@@ -12,10 +14,16 @@ type Runtime struct {
 	Installed bool   `json:"installed"`
 }
 
+type CaddyStatus struct {
+	Running bool   `json:"running"`
+	Version string `json:"version,omitempty"`
+}
+
 type Info struct {
-	Runtimes []Runtime `json:"runtimes"`
-	OS       string    `json:"os"`
-	Arch     string    `json:"arch"`
+	Runtimes []Runtime   `json:"runtimes"`
+	Caddy    CaddyStatus `json:"caddy"`
+	OS       string      `json:"os"`
+	Arch     string      `json:"arch"`
 }
 
 var checks = []struct {
@@ -77,5 +85,23 @@ func Detect() Info {
 		info.Runtimes = append(info.Runtimes, r)
 	}
 
+	info.Caddy = checkCaddy()
+
 	return info
+}
+
+func checkCaddy() CaddyStatus {
+	client := http.Client{Timeout: 1 * time.Second}
+	resp, err := client.Get("http://localhost:2019/config/")
+	if err != nil {
+		return CaddyStatus{Running: false}
+	}
+	resp.Body.Close()
+
+	status := CaddyStatus{Running: true}
+	out, err := exec.Command("caddy", "version").Output()
+	if err == nil {
+		status.Version = strings.Fields(strings.TrimSpace(string(out)))[0]
+	}
+	return status
 }

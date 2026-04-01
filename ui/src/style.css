@@ -452,6 +452,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 }
 
 .runtime-pill-ok { color: var(--text-secondary); }
+.runtime-pill-down { color: var(--error); border-color: var(--error-bg); }
+.runtime-pill-down .runtime-dot { background: var(--error); }
 .runtime-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text); }
 
 .app-grid {

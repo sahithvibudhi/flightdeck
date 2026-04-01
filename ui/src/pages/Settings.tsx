@@ -104,6 +104,15 @@ export default function Settings() {
             <div className="card">
               <h2>System</h2>
               <div className="runtime-grid">
+                <div className={`runtime-card ${system.caddy.running ? '' : 'runtime-card-missing'}`}>
+                  <div className="runtime-card-header">
+                    <span className={`runtime-dot ${system.caddy.running ? 'runtime-dot-ok' : 'runtime-dot-fail'}`} />
+                    <span className="runtime-card-name">Caddy</span>
+                  </div>
+                  <span className="runtime-card-version">
+                    {system.caddy.running ? (system.caddy.version || 'running') : 'Not running'}
+                  </span>
+                </div>
                 {system.runtimes.map(r => (
                   <div key={r.name} className={`runtime-card ${r.installed ? '' : 'runtime-card-missing'}`}>
                     <div className="runtime-card-header">

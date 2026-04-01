@@ -118,6 +118,10 @@ export default function Apps() {
               <span className="server-stat-value">{apps.filter(a => a.status === 'running').length}<span className="server-stat-unit">/{apps.length}</span></span>
               {system && (
                 <div className="runtime-bar-items" style={{ marginTop: 4 }}>
+                  <span className={`runtime-pill ${system.caddy.running ? 'runtime-pill-ok' : 'runtime-pill-down'}`} style={{ fontSize: 10, padding: '0 6px' }}>
+                    <span className="runtime-dot" />
+                    Caddy
+                  </span>
                   {system.runtimes.filter(r => r.installed).map(r => (
                     <span key={r.name} className="runtime-pill runtime-pill-ok" style={{ fontSize: 10, padding: '0 6px' }}>
                       <span className="runtime-dot" />
