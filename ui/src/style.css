@@ -383,31 +383,39 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   scroll-snap-align: start;
 }
 
-.server-stat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-}
-
-.server-stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  font-family: var(--font-mono);
-  letter-spacing: -0.03em;
-}
-
 .server-stat-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  align-self: flex-end;
+}
+
+.server-stat-unit-inline {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.server-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: -0.04em;
+  color: var(--text);
+  line-height: 1;
+}
+
+.server-stat-unit {
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.4;
+  letter-spacing: 0;
 }
 
 .server-stat-pct {
   font-size: 11px;
   font-family: var(--font-mono);
   color: var(--text-tertiary);
-  margin-top: -2px;
 }
 
 .sparkline {

@@ -15,11 +15,11 @@ function formatMemory(mb: number): string {
   return '—';
 }
 
-function formatCapacity(usedMb: number, totalMb: number): string {
+function formatCapacity(usedMb: number, totalMb: number): { numbers: string; unit: string } {
   if (totalMb >= 1024) {
-    return `${(usedMb / 1024).toFixed(1)} / ${(totalMb / 1024).toFixed(1)} GB`;
+    return { numbers: `${(usedMb / 1024).toFixed(1)} / ${(totalMb / 1024).toFixed(1)}`, unit: 'GB' };
   }
-  return `${usedMb.toFixed(0)} / ${totalMb.toFixed(0)} MB`;
+  return { numbers: `${usedMb.toFixed(0)} / ${totalMb.toFixed(0)}`, unit: 'MB' };
 }
 
 function Sparkline({ data, max }: { data: number[]; max?: number }) {
@@ -97,33 +97,25 @@ export default function Apps() {
         {latest && metrics && (
           <div className="server-overview fade-in">
             <div className="server-stat">
-              <div className="server-stat-header">
-                <span className="server-stat-value">{latest.cpu_percent.toFixed(0)}%</span>
-                <span className="server-stat-label">CPU</span>
-              </div>
+              <span className="server-stat-label">CPU</span>
+              <span className="server-stat-value">{latest.cpu_percent.toFixed(0)}<span className="server-stat-unit">%</span></span>
               <Sparkline data={metrics.snapshots.map(s => s.cpu_percent)} max={100} />
             </div>
             <div className="server-stat">
-              <div className="server-stat-header">
-                <span className="server-stat-value">{formatCapacity(latest.memory_used_mb, latest.memory_total_mb)}</span>
-                <span className="server-stat-label">Memory</span>
-              </div>
+              <span className="server-stat-label">Memory <span className="server-stat-unit-inline">{formatCapacity(latest.memory_used_mb, latest.memory_total_mb).unit}</span></span>
+              <span className="server-stat-value">{formatCapacity(latest.memory_used_mb, latest.memory_total_mb).numbers}</span>
               <span className="server-stat-pct">{(latest.memory_used_mb / latest.memory_total_mb * 100).toFixed(0)}% used</span>
               <Sparkline data={metrics.snapshots.map(s => s.memory_used_mb)} max={latest.memory_total_mb} />
             </div>
             <div className="server-stat">
-              <div className="server-stat-header">
-                <span className="server-stat-value">{formatCapacity(latest.disk_used_mb, latest.disk_total_mb)}</span>
-                <span className="server-stat-label">Disk</span>
-              </div>
+              <span className="server-stat-label">Disk <span className="server-stat-unit-inline">{formatCapacity(latest.disk_used_mb, latest.disk_total_mb).unit}</span></span>
+              <span className="server-stat-value">{formatCapacity(latest.disk_used_mb, latest.disk_total_mb).numbers}</span>
               <span className="server-stat-pct">{(latest.disk_used_mb / latest.disk_total_mb * 100).toFixed(0)}% used</span>
               <Sparkline data={metrics.snapshots.map(s => s.disk_used_mb)} max={latest.disk_total_mb} />
             </div>
             <div className="server-stat">
-              <div className="server-stat-header">
-                <span className="server-stat-value">{apps.filter(a => a.status === 'running').length}/{apps.length}</span>
-                <span className="server-stat-label">Apps</span>
-              </div>
+              <span className="server-stat-label">Apps</span>
+              <span className="server-stat-value">{apps.filter(a => a.status === 'running').length}<span className="server-stat-unit">/{apps.length}</span></span>
               {system && (
                 <div className="runtime-bar-items" style={{ marginTop: 4 }}>
                   {system.runtimes.filter(r => r.installed).map(r => (
