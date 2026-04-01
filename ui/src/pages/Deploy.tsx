@@ -42,6 +42,7 @@ export default function Deploy() {
 
   const [source, setSource] = useState<SourceType>('github');
   const [repoUrl, setRepoUrl] = useState('');
+  const [branch, setBranch] = useState('main');
   const [workDir, setWorkDir] = useState('');
 
   const [name, setName] = useState('');
@@ -122,7 +123,7 @@ export default function Deploy() {
       };
       if (source === 'github' && repoUrl) {
         payload.repo_url = repoUrl;
-        payload.branch = 'main';
+        payload.branch = branch || 'main';
       }
 
       const app = await createApp(payload);
@@ -259,15 +260,25 @@ export default function Deploy() {
             )}
 
             {source === 'github' && (
-              <div className="form-group fade-in">
-                <label>Repository URL</label>
-                <input
-                  value={repoUrl}
-                  onChange={e => handleRepoUrlChange(e.target.value)}
-                  placeholder="https://github.com/user/repo"
-                  autoFocus
-                />
-                <p className="form-hint">Private repos require a token in Settings</p>
+              <div className="fade-in">
+                <div className="form-group">
+                  <label>Repository URL</label>
+                  <input
+                    value={repoUrl}
+                    onChange={e => handleRepoUrlChange(e.target.value)}
+                    placeholder="https://github.com/user/repo"
+                    autoFocus
+                  />
+                  <p className="form-hint">Private repos require a token in Settings</p>
+                </div>
+                <div className="form-group">
+                  <label>Branch</label>
+                  <input
+                    value={branch}
+                    onChange={e => setBranch(e.target.value)}
+                    placeholder="main"
+                  />
+                </div>
               </div>
             )}
 
