@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	nestops "github.com/nestops/nestops"
 	"github.com/nestops/nestops/internal/api"
@@ -25,12 +28,10 @@ func main() {
 		dataDir = defaultDataDir
 	}
 
-	// Ensure data directory exists
 	if err := os.MkdirAll(filepath.Join(dataDir, "apps"), 0755); err != nil {
 		log.Fatalf("failed to create data directory: %v", err)
 	}
 
-	// Open database
 	dbPath := filepath.Join(dataDir, "nestops.db")
 	database, err := db.Open(dbPath)
 	if err != nil {
@@ -38,20 +39,17 @@ func main() {
 	}
 	defer database.Close()
 
-	// First boot check
 	if setup.NeedsSetup(database) {
 		if err := setup.RunWizard(database); err != nil {
 			log.Fatalf("setup failed: %v", err)
 		}
 	}
 
-	// Load config
 	cfg, err := db.GetConfig(database)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
-	// Start Caddy
 	caddy := proxy.NewCaddy(dataDir)
 	if err := caddy.Start(); err != nil {
 		log.Printf("warning: failed to start caddy: %v", err)
@@ -59,14 +57,12 @@ func main() {
 	} else {
 		defer caddy.Stop()
 
-		// Re-register panel domain
 		if cfg.PanelDomain.Valid {
 			if err := proxy.AddRoute("nestops-panel", cfg.PanelDomain.String, 3000); err != nil {
 				log.Printf("warning: failed to register panel domain: %v", err)
 			}
 		}
 
-		// Re-register all app domains
 		domains, err := db.ListAllDomains(database)
 		if err != nil {
 			log.Printf("warning: failed to list domains: %v", err)
@@ -83,7 +79,6 @@ func main() {
 		}
 	}
 
-	// Start process manager and restore running apps
 	if err := system.InitMetricsTable(database); err != nil {
 		log.Fatalf("failed to init metrics table: %v", err)
 	}
@@ -94,19 +89,27 @@ func main() {
 		log.Printf("warning: failed to restore apps: %v", err)
 	}
 
-	// Prepare embedded UI
 	uiDist, err := fs.Sub(nestops.UIFiles, "ui/dist")
 	if err != nil {
 		log.Fatalf("failed to load embedded UI: %v", err)
 	}
 
-	// Start HTTP server
 	router := api.NewRouter(database, pm, dataDir, cfg.JWTSecret)
 	router.NotFound(api.StaticHandler(uiDist).ServeHTTP)
 
 	addr := ":3000"
-	fmt.Printf("nestops is running on %s\n", addr)
-	if err := http.ListenAndServe(addr, router); err != nil {
+	server := &http.Server{Addr: addr, Handler: router}
+
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+		sig := <-sigCh
+		log.Printf("received %s, shutting down...", sig)
+		server.Shutdown(context.Background())
+	}()
+
+	fmt.Printf("flightdeck is running on %s\n", addr)
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
 }
