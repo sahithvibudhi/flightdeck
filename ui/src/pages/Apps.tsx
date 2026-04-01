@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
-  listApps, clearToken, getSystemInfo, getServerMetrics,
+  listApps, clearToken, getSystemInfo, getServerMetrics, getSettings,
   type App, type SystemInfo, type ServerMetricsHistory,
 } from '../api';
 
@@ -42,10 +42,13 @@ export default function Apps() {
   const [apps, setApps] = useState<App[]>([]);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [metrics, setMetrics] = useState<ServerMetricsHistory | null>(null);
+  const [initial, setInitial] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     loadAll();
+    getSettings().then(s => setInitial(s.admin_username.charAt(0))).catch(() => {});
     const interval = setInterval(loadAll, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -67,6 +70,7 @@ export default function Apps() {
   }
 
   function handleLogout() {
+    if (!confirm('Log out?')) return;
     clearToken();
     navigate('/login');
   }
@@ -76,10 +80,16 @@ export default function Apps() {
   return (
     <div className="layout">
       <nav className="nav">
-        <Link to="/" className="nav-brand">flightdeck</Link>
-        <div className="nav-links">
-          <Link to="/settings">Settings</Link>
-          <a href="#" onClick={handleLogout}>Log out</a>
+        <div className="nav-left">
+          <Link to="/" className="nav-brand">flightdeck</Link>
+          <div className="nav-links">
+            <Link to="/" className={`nav-link ${location.pathname === '/' ? 'nav-link-active' : ''}`}>Apps</Link>
+            <Link to="/settings" className="nav-link">Settings</Link>
+          </div>
+        </div>
+        <div className="nav-right">
+          <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>New app</Link>
+          <div className="nav-avatar" onClick={handleLogout} title="Log out">{initial || '?'}</div>
         </div>
       </nav>
       <div className="container">
@@ -130,9 +140,6 @@ export default function Apps() {
 
         <div className="page-header">
           <span className="page-title">Deployments</span>
-          <Link to="/new" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
-            New app
-          </Link>
         </div>
 
         {apps.length > 0 ? (
@@ -180,7 +187,7 @@ export default function Apps() {
         ) : (
           <div className="empty-state">
             <p>No deployments yet</p>
-            <Link to="/new" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
+            <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
               Deploy your first app
             </Link>
           </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   getSettings, updatePanelDomain, changePassword,
   updateGitToken, getSystemInfo,
@@ -15,6 +15,7 @@ export default function Settings() {
   const [newPw, setNewPw] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const location = useLocation();
 
   useEffect(() => { loadAll(); }, []);
 
@@ -84,9 +85,12 @@ export default function Settings() {
   return (
     <div className="layout">
       <nav className="nav">
-        <Link to="/" className="nav-brand">flightdeck</Link>
-        <div className="nav-links">
-          <Link to="/">Apps</Link>
+        <div className="nav-left">
+          <Link to="/" className="nav-brand">flightdeck</Link>
+          <div className="nav-links">
+            <Link to="/" className="nav-link">Apps</Link>
+            <Link to="/settings" className={`nav-link ${location.pathname === '/settings' ? 'nav-link-active' : ''}`}>Settings</Link>
+          </div>
         </div>
       </nav>
       <div className="container fade-in">
@@ -113,7 +117,7 @@ export default function Settings() {
                 ))}
               </div>
               <p className="form-hint mt-sm">
-                {system.os}/{system.arch} — Install runtimes via SSH to enable their start commands
+                {system.os}/{system.arch}
               </p>
             </div>
           )}
@@ -126,12 +130,8 @@ export default function Settings() {
                   <span>ghp_••••••••••••••••••••</span>
                 </div>
                 <div className="flex gap-sm mt-sm">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setGitToken('')}>
-                    Replace
-                  </button>
-                  <button className="btn btn-danger btn-sm" onClick={handleRemoveToken}>
-                    Remove token
-                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setGitToken('')}>Replace</button>
+                  <button className="btn btn-danger btn-sm" onClick={handleRemoveToken}>Remove token</button>
                 </div>
               </div>
             ) : (
@@ -144,13 +144,9 @@ export default function Settings() {
                     onChange={e => setGitToken(e.target.value)}
                     placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                   />
-                  <p className="form-hint">
-                    Required for private repositories. Create at GitHub → Settings → Developer settings → Tokens.
-                  </p>
+                  <p className="form-hint">Required for private repositories</p>
                 </div>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={!gitToken}>
-                  Save token
-                </button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={!gitToken}>Save token</button>
               </form>
             )}
           </div>
@@ -160,11 +156,7 @@ export default function Settings() {
             <form onSubmit={handleDomain}>
               <div className="form-group">
                 <label>Domain</label>
-                <input
-                  value={domain}
-                  onChange={e => setDomain(e.target.value)}
-                  placeholder="admin.example.com"
-                />
+                <input value={domain} onChange={e => setDomain(e.target.value)} placeholder="admin.example.com" />
                 <p className="form-hint">Leave blank for IP-only access on :3000</p>
               </div>
               <button type="submit" className="btn btn-primary btn-sm">Update domain</button>
@@ -176,20 +168,11 @@ export default function Settings() {
             <form onSubmit={handlePassword}>
               <div className="form-group">
                 <label>Current password</label>
-                <input
-                  type="password"
-                  value={currentPw}
-                  onChange={e => setCurrentPw(e.target.value)}
-                />
+                <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} />
               </div>
               <div className="form-group">
                 <label>New password</label>
-                <input
-                  type="password"
-                  value={newPw}
-                  onChange={e => setNewPw(e.target.value)}
-                  placeholder="Minimum 8 characters"
-                />
+                <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Minimum 8 characters" />
               </div>
               <button type="submit" className="btn btn-primary btn-sm">Update password</button>
             </form>

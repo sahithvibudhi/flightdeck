@@ -155,7 +155,9 @@ export default function AppDetail() {
     return (
       <div className="layout">
         <nav className="nav">
-          <Link to="/" className="nav-brand">flightdeck</Link>
+          <div className="nav-left">
+            <Link to="/" className="nav-brand">flightdeck</Link>
+          </div>
         </nav>
         <div className="container">
           <div className="flex-center gap-sm" style={{ padding: '40px 0', justifyContent: 'center' }}>
@@ -169,10 +171,12 @@ export default function AppDetail() {
   return (
     <div className="layout">
       <nav className="nav">
-        <Link to="/" className="nav-brand">flightdeck</Link>
-        <div className="nav-links">
-          <Link to="/">Apps</Link>
-          <Link to="/settings">Settings</Link>
+        <div className="nav-left">
+          <Link to="/" className="nav-brand">flightdeck</Link>
+          <div className="nav-links">
+            <Link to="/" className="nav-link nav-link-active">Apps</Link>
+            <Link to="/settings" className="nav-link">Settings</Link>
+          </div>
         </div>
       </nav>
       <div className="container fade-in">
@@ -191,7 +195,7 @@ export default function AppDetail() {
           <div className="app-actions">
             {app.repo_url && (
               <button
-                className="btn btn-sm"
+                className="btn btn-secondary btn-sm"
                 onClick={handlePull}
                 disabled={pulling}
               >
@@ -208,7 +212,7 @@ export default function AppDetail() {
               </button>
             ) : (
               <button
-                className="btn btn-sm"
+                className="btn btn-secondary btn-sm"
                 onClick={() => handleAction('stop', () => stopApp(id!))}
                 disabled={!!actionLoading}
               >
@@ -216,15 +220,13 @@ export default function AppDetail() {
               </button>
             )}
             <button
-              className="btn btn-sm"
+              className="btn btn-secondary btn-sm"
               onClick={() => handleAction('restart', () => restartApp(id!))}
               disabled={!!actionLoading}
             >
               {actionLoading === 'restart' ? <span className="spinner" /> : 'Restart'}
             </button>
-            <button className="btn btn-danger btn-sm" onClick={handleDelete}>
-              Delete
-            </button>
+            <button className="btn btn-danger btn-sm" onClick={handleDelete}>Delete</button>
           </div>
         </div>
 
@@ -259,36 +261,17 @@ export default function AppDetail() {
         </div>
 
         <div className="section">
-          <div className="section-header">
-            <h2>Environment Variables</h2>
-          </div>
+          <h2>Environment Variables</h2>
           <form onSubmit={saveEnvs}>
             {envs.map((env, i) => (
               <div key={i} className="env-row">
-                <input
-                  placeholder="KEY"
-                  value={env.key}
-                  onChange={e => updateEnv(i, 'key', e.target.value)}
-                />
-                <input
-                  placeholder="value"
-                  value={env.value}
-                  onChange={e => updateEnv(i, 'value', e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => removeEnvRow(i)}
-                  style={{ flexShrink: 0 }}
-                >
-                  Remove
-                </button>
+                <input placeholder="KEY" value={env.key} onChange={e => updateEnv(i, 'key', e.target.value)} />
+                <input placeholder="value" value={env.value} onChange={e => updateEnv(i, 'value', e.target.value)} />
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEnvRow(i)} style={{ flexShrink: 0 }}>Remove</button>
               </div>
             ))}
             <div className="flex gap-sm mt-sm">
-              <button type="button" className="btn btn-ghost btn-sm" onClick={addEnvRow}>
-                Add variable
-              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={addEnvRow}>Add variable</button>
               <button type="submit" className="btn btn-primary btn-sm">Save changes</button>
             </div>
           </form>
@@ -299,21 +282,11 @@ export default function AppDetail() {
           {domains.map(d => (
             <div key={d.id} className="domain-row">
               <span>{d.domain}</span>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => handleRemoveDomain(d.domain)}
-              >
-                Remove
-              </button>
+              <button className="btn btn-ghost btn-sm" onClick={() => handleRemoveDomain(d.domain)}>Remove</button>
             </div>
           ))}
           <form onSubmit={handleAddDomain} className="flex gap-sm mt-sm">
-            <input
-              placeholder="example.com"
-              value={newDomain}
-              onChange={e => setNewDomain(e.target.value)}
-              style={{ flex: 1 }}
-            />
+            <input placeholder="example.com" value={newDomain} onChange={e => setNewDomain(e.target.value)} style={{ flex: 1 }} />
             <button type="submit" className="btn btn-primary btn-sm">Add domain</button>
           </form>
         </div>
