@@ -423,6 +423,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   display: flex;
   align-items: flex-end;
   gap: 1px;
+  margin-top: auto;
 }
 
 .sparkline-bar {
