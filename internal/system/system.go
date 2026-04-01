@@ -36,6 +36,13 @@ var checks = []struct {
 		}
 		return s
 	}},
+	{"Docker", "docker", "--version", func(s string) string {
+		s = strings.TrimPrefix(s, "Docker version ")
+		if i := strings.Index(s, ","); i > 0 {
+			return s[:i]
+		}
+		return s
+	}},
 	{"Bun", "bun", "--version", nil},
 	{"Deno", "deno", "--version", func(s string) string {
 		for _, line := range strings.Split(s, "\n") {
