@@ -58,7 +58,7 @@ export default function NewApp() {
   return (
     <div className="layout">
       <nav className="nav">
-        <Link to="/" className="nav-brand">nestops</Link>
+        <Link to="/" className="nav-brand">flightdeck</Link>
         <div className="nav-links">
           <Link to="/">Apps</Link>
           <Link to="/settings">Settings</Link>

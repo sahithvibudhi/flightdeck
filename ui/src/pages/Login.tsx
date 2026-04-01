@@ -27,7 +27,7 @@ export default function Login() {
   return (
     <div className="login-wrapper">
       <div className="login-box">
-        <div className="login-brand">nestops</div>
+        <div className="login-brand">flightdeck</div>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Username</label>

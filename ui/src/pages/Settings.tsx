@@ -84,7 +84,7 @@ export default function Settings() {
   return (
     <div className="layout">
       <nav className="nav">
-        <Link to="/" className="nav-brand">nestops</Link>
+        <Link to="/" className="nav-brand">flightdeck</Link>
         <div className="nav-links">
           <Link to="/">Apps</Link>
         </div>

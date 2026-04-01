@@ -155,7 +155,7 @@ export default function AppDetail() {
     return (
       <div className="layout">
         <nav className="nav">
-          <Link to="/" className="nav-brand">nestops</Link>
+          <Link to="/" className="nav-brand">flightdeck</Link>
         </nav>
         <div className="container">
           <div className="flex-center gap-sm" style={{ padding: '40px 0', justifyContent: 'center' }}>
@@ -169,7 +169,7 @@ export default function AppDetail() {
   return (
     <div className="layout">
       <nav className="nav">
-        <Link to="/" className="nav-brand">nestops</Link>
+        <Link to="/" className="nav-brand">flightdeck</Link>
         <div className="nav-links">
           <Link to="/">Apps</Link>
           <Link to="/settings">Settings</Link>
