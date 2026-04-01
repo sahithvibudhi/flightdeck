@@ -8,20 +8,27 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/nestops/nestops/internal/db"
 )
 
+type proc struct {
+	cmd     *exec.Cmd
+	done    chan struct{}
+	logFile *os.File
+}
+
 type Manager struct {
 	mu       sync.Mutex
-	procs    map[string]*exec.Cmd
+	procs    map[string]*proc
 	database *sql.DB
 	dataDir  string
 }
 
 func NewManager(database *sql.DB, dataDir string) *Manager {
 	return &Manager{
-		procs:    make(map[string]*exec.Cmd),
+		procs:    make(map[string]*proc),
 		database: database,
 		dataDir:  dataDir,
 	}
@@ -51,6 +58,7 @@ func (m *Manager) StartApp(app *db.App) error {
 
 	parts := strings.Fields(app.StartCmd)
 	if len(parts) == 0 {
+		logFile.Close()
 		return fmt.Errorf("empty start command")
 	}
 
@@ -65,35 +73,40 @@ func (m *Manager) StartApp(app *db.App) error {
 		return fmt.Errorf("start process: %w", err)
 	}
 
-	m.procs[app.ID] = cmd
+	p := &proc{
+		cmd:     cmd,
+		done:    make(chan struct{}),
+		logFile: logFile,
+	}
+	m.procs[app.ID] = p
+
 	pid := sql.NullInt64{Int64: int64(cmd.Process.Pid), Valid: true}
 	if err := db.UpdateAppStatus(m.database, app.ID, "running", pid); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
 
-	go m.watchProcess(app.ID, cmd, logFile)
+	go m.watchProcess(app.ID, p)
 
 	return nil
 }
 
 func (m *Manager) StopApp(appID string) error {
 	m.mu.Lock()
-	cmd, running := m.procs[appID]
+	p, running := m.procs[appID]
 	m.mu.Unlock()
 
 	if !running {
 		return nil
 	}
 
-	if err := cmd.Process.Signal(os.Interrupt); err != nil {
-		cmd.Process.Kill()
+	p.cmd.Process.Signal(os.Interrupt)
+
+	select {
+	case <-p.done:
+	case <-time.After(10 * time.Second):
+		p.cmd.Process.Kill()
+		<-p.done
 	}
-
-	cmd.Wait()
-
-	m.mu.Lock()
-	delete(m.procs, appID)
-	m.mu.Unlock()
 
 	return db.UpdateAppStatus(m.database, appID, "stopped", sql.NullInt64{})
 }
@@ -128,9 +141,16 @@ func (m *Manager) RestoreRunning() error {
 	return nil
 }
 
-func (m *Manager) watchProcess(appID string, cmd *exec.Cmd, logFile *os.File) {
-	cmd.Wait()
-	logFile.Close()
+/*
+watchProcess waits for the process to exit, then cleans up the
+log file handle and removes the process from the map. The done
+channel signals StopApp that the process has fully exited, avoiding
+the race where both watchProcess and StopApp call cmd.Wait().
+*/
+func (m *Manager) watchProcess(appID string, p *proc) {
+	p.cmd.Wait()
+	p.logFile.Close()
+	close(p.done)
 
 	m.mu.Lock()
 	delete(m.procs, appID)

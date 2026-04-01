@@ -45,14 +45,14 @@ func GetMetrics(pid int) Metrics {
 
 func (m *Manager) GetAppMetrics(appID string) Metrics {
 	m.mu.Lock()
-	cmd, running := m.procs[appID]
+	p, running := m.procs[appID]
 	m.mu.Unlock()
 
-	if !running || cmd.Process == nil {
+	if !running || p.cmd.Process == nil {
 		return Metrics{}
 	}
 
-	return GetMetrics(cmd.Process.Pid)
+	return GetMetrics(p.cmd.Process.Pid)
 }
 
 func roundTo(val float64, places int) float64 {
