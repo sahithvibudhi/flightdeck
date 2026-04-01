@@ -1,9 +1,14 @@
 #!/bin/bash
 set -e
 
+if [ "$(id -u)" -ne 0 ]; then
+  echo "This script must be run as root."
+  exit 1
+fi
+
 ARCH=$(uname -m)
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-VERSION="latest"
+VERSION="${1:-latest}"
 INSTALL_DIR="/usr/local/bin"
 DATA_DIR="/var/nestops"
 
@@ -14,7 +19,7 @@ case "$ARCH" in
   *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
-echo "Installing nestops..."
+echo "Installing flightdeck..."
 echo ""
 
 echo "Checking dependencies..."
@@ -28,7 +33,7 @@ if ! command -v git &>/dev/null; then
   elif command -v apk &>/dev/null; then
     apk add --quiet git
   else
-    echo "  Could not install git automatically. Please install git and try again."
+    echo "  Could not install git. Please install git and try again."
     exit 1
   fi
 fi
@@ -39,6 +44,10 @@ if ! command -v caddy &>/dev/null; then
   curl -sSL "https://caddyserver.com/api/download?os=${OS}&arch=${ARCH}" \
     -o /usr/local/bin/caddy
   chmod +x /usr/local/bin/caddy
+  if ! caddy version &>/dev/null; then
+    echo "  Caddy installation failed."
+    exit 1
+  fi
 fi
 echo "  caddy $(caddy version | cut -d' ' -f1)"
 
@@ -52,9 +61,9 @@ mv /tmp/nestops "$INSTALL_DIR/nestops"
 mkdir -p "$DATA_DIR/apps"
 mkdir -p "$DATA_DIR/caddy"
 
-cat > /etc/systemd/system/nestops.service <<EOF
+cat > /etc/systemd/system/flightdeck.service <<EOF
 [Unit]
-Description=nestops
+Description=flightdeck
 After=network.target
 
 [Service]
@@ -62,18 +71,18 @@ ExecStart=/usr/local/bin/nestops
 Restart=always
 RestartSec=5
 WorkingDirectory=/var/nestops
+Environment=NESTOPS_DATA_DIR=/var/nestops
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable nestops
-
-/usr/local/bin/nestops
-
-systemctl start nestops
+systemctl enable flightdeck
 
 echo ""
-echo "nestops is running."
-echo "Access it at the address shown above."
+echo "Run the setup wizard:"
+echo "  /usr/local/bin/nestops"
+echo ""
+echo "Then start the service:"
+echo "  systemctl start flightdeck"

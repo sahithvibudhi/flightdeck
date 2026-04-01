@@ -1,4 +1,4 @@
-.PHONY: build dev ui clean release
+.PHONY: build dev ui clean release test
 
 ui:
 	cd ui && npm run build
@@ -13,6 +13,9 @@ build-linux-arm64: ui
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o dist/nestops-linux-arm64 ./cmd/nestops
 
 release: build-linux-amd64 build-linux-arm64
+
+test:
+	go test ./internal/... -count=1
 
 dev:
 	go run ./cmd/nestops
