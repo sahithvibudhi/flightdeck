@@ -9,8 +9,6 @@ fi
 ARCH=$(uname -m)
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 VERSION="${1:-latest}"
-INSTALL_DIR="/usr/local/bin"
-DATA_DIR="/var/flightdeck"
 
 case "$ARCH" in
   x86_64)  ARCH="amd64" ;;
@@ -20,46 +18,14 @@ case "$ARCH" in
 esac
 
 echo "Installing flightdeck..."
-echo ""
-
-echo "Checking dependencies..."
-
-if ! command -v git &>/dev/null; then
-  echo "  Git not found. Installing..."
-  if command -v apt-get &>/dev/null; then
-    apt-get update -qq && apt-get install -y -qq git
-  elif command -v yum &>/dev/null; then
-    yum install -y -q git
-  elif command -v apk &>/dev/null; then
-    apk add --quiet git
-  else
-    echo "  Could not install git. Please install git and try again."
-    exit 1
-  fi
-fi
-echo "  git $(git --version | cut -d' ' -f3)"
-
-if ! command -v caddy &>/dev/null; then
-  echo "  Caddy not found. Installing..."
-  curl -sSL "https://caddyserver.com/api/download?os=${OS}&arch=${ARCH}" \
-    -o /usr/local/bin/caddy
-  chmod +x /usr/local/bin/caddy
-  if ! caddy version &>/dev/null; then
-    echo "  Caddy installation failed."
-    exit 1
-  fi
-fi
-echo "  caddy $(caddy version | cut -d' ' -f1)"
-
-echo ""
 
 curl -sSL "https://github.com/sahithvibudhi/flightdeck/releases/download/${VERSION}/flightdeck-${OS}-${ARCH}" \
   -o /tmp/flightdeck
 chmod +x /tmp/flightdeck
-mv /tmp/flightdeck "$INSTALL_DIR/flightdeck"
+mv /tmp/flightdeck /usr/local/bin/flightdeck
 
-mkdir -p "$DATA_DIR/apps"
-mkdir -p "$DATA_DIR/caddy"
+mkdir -p /var/flightdeck/apps
+mkdir -p /var/flightdeck/caddy
 
 cat > /etc/systemd/system/flightdeck.service <<EOF
 [Unit]
@@ -81,8 +47,10 @@ systemctl daemon-reload
 systemctl enable flightdeck
 
 echo ""
-echo "Run the setup wizard:"
-echo "  /usr/local/bin/flightdeck"
+echo "Installed. Run the setup wizard:"
+echo ""
+echo "  flightdeck"
 echo ""
 echo "Then start the service:"
+echo ""
 echo "  systemctl start flightdeck"
