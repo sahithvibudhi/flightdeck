@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/nestops/nestops/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/db"
 )
 
 type EnvsHandler struct {

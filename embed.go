@@ -1,4 +1,4 @@
-package nestops
+package flightdeck
 
 import "embed"
 

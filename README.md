@@ -13,7 +13,7 @@ curl -sSL https://raw.githubusercontent.com/sahithvibudhi/flightdeck/main/script
 Then run the setup wizard:
 
 ```bash
-/usr/local/bin/nestops
+/usr/local/bin/flightdeck
 ```
 
 Start the service:
@@ -55,7 +55,7 @@ flightdeck binary
 ├── Go API server (:3000)
 │   ├── REST API (/api/*)
 │   └── Embedded React UI (/)
-├── SQLite database (nestops.db)
+├── SQLite database (flightdeck.db)
 ├── Caddy subprocess (:80/:443)
 │   └── Admin API (:2019)
 └── App processes (ports 4000+)
@@ -117,7 +117,7 @@ GET    /api/system/metrics          Server metrics history (last 120 snapshots)
 
 ```bash
 # Run the API server
-NESTOPS_DATA_DIR=./data go run ./cmd/nestops
+FLIGHTDECK_DATA_DIR=./data go run ./cmd/flightdeck
 
 # Run the UI dev server (proxies /api to :3000)
 cd ui && npm run dev
@@ -135,7 +135,7 @@ make release
 ## Project structure
 
 ```
-cmd/nestops/main.go          Entry point, startup sequence
+cmd/flightdeck/main.go       Entry point, startup sequence
 internal/
   api/                       HTTP handlers (chi router)
   auth/                      bcrypt + JWT

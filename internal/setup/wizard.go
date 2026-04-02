@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nestops/nestops/internal/auth"
-	"github.com/nestops/nestops/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/auth"
+	"github.com/sahithvibudhi/flightdeck/internal/db"
 	"golang.org/x/term"
 )
 

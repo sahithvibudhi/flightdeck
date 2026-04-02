@@ -4,8 +4,8 @@ import (
 	"database/sql"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/nestops/nestops/internal/process"
-	"github.com/nestops/nestops/internal/proxy"
+	"github.com/sahithvibudhi/flightdeck/internal/process"
+	"github.com/sahithvibudhi/flightdeck/internal/proxy"
 )
 
 func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret string) *chi.Mux {

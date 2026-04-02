@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	dbpkg "github.com/nestops/nestops/internal/db"
-	"github.com/nestops/nestops/internal/testutil"
+	dbpkg "github.com/sahithvibudhi/flightdeck/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/testutil"
 )
 
 func TestListEnvs_Empty(t *testing.T) {

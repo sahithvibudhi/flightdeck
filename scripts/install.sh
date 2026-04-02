@@ -10,7 +10,7 @@ ARCH=$(uname -m)
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 VERSION="${1:-latest}"
 INSTALL_DIR="/usr/local/bin"
-DATA_DIR="/var/nestops"
+DATA_DIR="/var/flightdeck"
 
 case "$ARCH" in
   x86_64)  ARCH="amd64" ;;
@@ -53,10 +53,10 @@ echo "  caddy $(caddy version | cut -d' ' -f1)"
 
 echo ""
 
-curl -sSL "https://github.com/nestops/nestops/releases/download/${VERSION}/nestops-${OS}-${ARCH}" \
-  -o /tmp/nestops
-chmod +x /tmp/nestops
-mv /tmp/nestops "$INSTALL_DIR/nestops"
+curl -sSL "https://github.com/sahithvibudhi/flightdeck/releases/download/${VERSION}/flightdeck-${OS}-${ARCH}" \
+  -o /tmp/flightdeck
+chmod +x /tmp/flightdeck
+mv /tmp/flightdeck "$INSTALL_DIR/flightdeck"
 
 mkdir -p "$DATA_DIR/apps"
 mkdir -p "$DATA_DIR/caddy"
@@ -67,11 +67,11 @@ Description=flightdeck
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/nestops
+ExecStart=/usr/local/bin/flightdeck
 Restart=always
 RestartSec=5
-WorkingDirectory=/var/nestops
-Environment=NESTOPS_DATA_DIR=/var/nestops
+WorkingDirectory=/var/flightdeck
+Environment=FLIGHTDECK_DATA_DIR=/var/flightdeck
 
 [Install]
 WantedBy=multi-user.target
@@ -82,7 +82,7 @@ systemctl enable flightdeck
 
 echo ""
 echo "Run the setup wizard:"
-echo "  /usr/local/bin/nestops"
+echo "  /usr/local/bin/flightdeck"
 echo ""
 echo "Then start the service:"
 echo "  systemctl start flightdeck"

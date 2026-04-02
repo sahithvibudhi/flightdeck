@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
-	dbpkg "github.com/nestops/nestops/internal/db"
+	dbpkg "github.com/sahithvibudhi/flightdeck/internal/db"
 )
 
 func seedTestConfig(t *testing.T, database *sql.DB, passwordHash, jwtSecret string) {

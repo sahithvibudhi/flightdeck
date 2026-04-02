@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/nestops/nestops/internal/auth"
-	"github.com/nestops/nestops/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/auth"
+	"github.com/sahithvibudhi/flightdeck/internal/db"
 )
 
 type AuthHandler struct {

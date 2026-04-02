@@ -9,9 +9,9 @@ import (
 	"os"
 	"testing"
 
-	dbpkg "github.com/nestops/nestops/internal/db"
-	"github.com/nestops/nestops/internal/process"
-	"github.com/nestops/nestops/internal/testutil"
+	dbpkg "github.com/sahithvibudhi/flightdeck/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/process"
+	"github.com/sahithvibudhi/flightdeck/internal/testutil"
 )
 
 func setupAppsHandler(t *testing.T) (*AppsHandler, *sql.DB) {

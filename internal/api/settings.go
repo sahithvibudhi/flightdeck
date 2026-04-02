@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/nestops/nestops/internal/db"
-	"github.com/nestops/nestops/internal/proxy"
-	"github.com/nestops/nestops/internal/system"
+	"github.com/sahithvibudhi/flightdeck/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/proxy"
+	"github.com/sahithvibudhi/flightdeck/internal/system"
 )
 
 type SettingsHandler struct {
@@ -59,11 +59,11 @@ func (h *SettingsHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cfg.PanelDomain.Valid {
-		proxy.RemoveRoute("nestops-panel")
+		proxy.RemoveRoute("flightdeck-panel")
 	}
 
 	if req.Domain != "" {
-		if err := proxy.AddRoute("nestops-panel", req.Domain, 3000); err != nil {
+		if err := proxy.AddRoute("flightdeck-panel", req.Domain, 3000); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to configure domain"})
 			return
 		}

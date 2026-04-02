@@ -11,19 +11,19 @@ import (
 	"path/filepath"
 	"syscall"
 
-	nestops "github.com/nestops/nestops"
-	"github.com/nestops/nestops/internal/api"
-	"github.com/nestops/nestops/internal/db"
-	"github.com/nestops/nestops/internal/process"
-	"github.com/nestops/nestops/internal/proxy"
-	"github.com/nestops/nestops/internal/setup"
-	"github.com/nestops/nestops/internal/system"
+	flightdeck "github.com/sahithvibudhi/flightdeck"
+	"github.com/sahithvibudhi/flightdeck/internal/api"
+	"github.com/sahithvibudhi/flightdeck/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/process"
+	"github.com/sahithvibudhi/flightdeck/internal/proxy"
+	"github.com/sahithvibudhi/flightdeck/internal/setup"
+	"github.com/sahithvibudhi/flightdeck/internal/system"
 )
 
-const defaultDataDir = "/var/nestops"
+const defaultDataDir = "/var/flightdeck"
 
 func main() {
-	dataDir := os.Getenv("NESTOPS_DATA_DIR")
+	dataDir := os.Getenv("FLIGHTDECK_DATA_DIR")
 	if dataDir == "" {
 		dataDir = defaultDataDir
 	}
@@ -32,7 +32,7 @@ func main() {
 		log.Fatalf("failed to create data directory: %v", err)
 	}
 
-	dbPath := filepath.Join(dataDir, "nestops.db")
+	dbPath := filepath.Join(dataDir, "flightdeck.db")
 	database, err := db.Open(dbPath)
 	if err != nil {
 		log.Fatalf("failed to open database: %v", err)
@@ -58,7 +58,7 @@ func main() {
 		defer caddy.Stop()
 
 		if cfg.PanelDomain.Valid {
-			if err := proxy.AddRoute("nestops-panel", cfg.PanelDomain.String, 3000); err != nil {
+			if err := proxy.AddRoute("flightdeck-panel", cfg.PanelDomain.String, 3000); err != nil {
 				log.Printf("warning: failed to register panel domain: %v", err)
 			}
 		}
@@ -89,7 +89,7 @@ func main() {
 		log.Printf("warning: failed to restore apps: %v", err)
 	}
 
-	uiDist, err := fs.Sub(nestops.UIFiles, "ui/dist")
+	uiDist, err := fs.Sub(flightdeck.UIFiles, "ui/dist")
 	if err != nil {
 		log.Fatalf("failed to load embedded UI: %v", err)
 	}

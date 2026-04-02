@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/nestops/nestops/internal/db"
-	"github.com/nestops/nestops/internal/system"
+	"github.com/sahithvibudhi/flightdeck/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/system"
 )
 
 func NewTestDB(t *testing.T) *sql.DB {

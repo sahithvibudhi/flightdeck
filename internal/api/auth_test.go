@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/nestops/nestops/internal/auth"
-	"github.com/nestops/nestops/internal/testutil"
+	"github.com/sahithvibudhi/flightdeck/internal/auth"
+	"github.com/sahithvibudhi/flightdeck/internal/testutil"
 )
 
 func TestLogin_Success(t *testing.T) {

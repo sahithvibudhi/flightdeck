@@ -1,4 +1,4 @@
-module github.com/nestops/nestops
+module github.com/sahithvibudhi/flightdeck
 
 go 1.25.0
 

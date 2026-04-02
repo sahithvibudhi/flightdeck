@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/nestops/nestops/internal/testutil"
+	"github.com/sahithvibudhi/flightdeck/internal/testutil"
 )
 
 func TestSettings_Get(t *testing.T) {

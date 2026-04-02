@@ -8,9 +8,9 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/nestops/nestops/internal/db"
-	"github.com/nestops/nestops/internal/git"
-	"github.com/nestops/nestops/internal/process"
+	"github.com/sahithvibudhi/flightdeck/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/git"
+	"github.com/sahithvibudhi/flightdeck/internal/process"
 )
 
 type AppsHandler struct {

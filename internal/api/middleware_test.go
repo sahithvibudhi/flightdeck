@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/nestops/nestops/internal/auth"
+	"github.com/sahithvibudhi/flightdeck/internal/auth"
 )
 
 func TestAuthMiddleware_ValidToken(t *testing.T) {

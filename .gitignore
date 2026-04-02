@@ -1,5 +1,5 @@
 # Binary
-/nestops
+/flightdeck
 dist/
 
 # UI
@@ -15,3 +15,4 @@ ui/dist/
 # IDE
 .idea/
 .vscode/
+data/

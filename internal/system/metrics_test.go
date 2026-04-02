@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/nestops/nestops/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/db"
 )
 
 func openTestDB(t *testing.T) *sql.DB {

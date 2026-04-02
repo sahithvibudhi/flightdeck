@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/nestops/nestops/internal/auth"
+	"github.com/sahithvibudhi/flightdeck/internal/auth"
 )
 
 type contextKey string
