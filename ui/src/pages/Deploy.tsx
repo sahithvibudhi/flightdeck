@@ -258,6 +258,7 @@ export default function Deploy() {
               placeholder="/home/deploy/my-app"
               autoFocus
             />
+            <p className="form-hint">Full path to a directory already on this server</p>
           </div>
         )}
 
@@ -303,7 +304,7 @@ export default function Deploy() {
                 placeholder="https://github.com/user/repo"
                 autoFocus
               />
-              <p className="form-hint">Private repos require a token in Settings</p>
+              <p className="form-hint">Private repos require a <Link to="/settings" style={{ color: 'var(--text-secondary)' }}>token in Settings</Link></p>
             </div>
             <div className="form-group">
               <label>Branch</label>

@@ -182,9 +182,13 @@ export default function Apps() {
           </div>
         ) : (
           <div className="empty-state">
-            <p>No deployments yet</p>
+            <p style={{ fontSize: 15, marginBottom: 8 }}>Your server is ready</p>
+            <p>Deploy an app from GitHub, a zip file, or a directory on this server.</p>
             <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
               Deploy your first app
+            </Link>
+            <Link to="/settings" className="btn-text" style={{ textDecoration: 'none', marginTop: 12, fontSize: 12 }}>
+              or set up runtimes and tokens in Settings
             </Link>
           </div>
         )}
