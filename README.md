@@ -2,7 +2,19 @@
 
 One binary. One command. Your VPS, under control.
 
-Flightdeck is a self-hosted VPS control plane. Install it on a fresh server, answer three questions, and get a dashboard to deploy and manage multiple apps with automatic SSL, domain routing, environment variables, and process control.
+Flightdeck is a control plane for indie developers who deploy to a VPS. Install it on a $5 server, answer three questions, and you have a dashboard to deploy and manage your apps with automatic SSL, domain routing, and process control.
+
+## Why flightdeck?
+
+Most deployment tools assume you're running Kubernetes, or Docker, or a managed platform that costs $20/month per app. If you're an indie hacker shipping a side project, a SaaS MVP, or a weekend app — you don't need any of that. You need your code running on a cheap VPS.
+
+Flightdeck is built for that. Your app code, a $5 VPS, and this binary. That's the whole stack.
+
+**No Docker.** This is intentional. Docker adds memory overhead, image build times, and complexity that doesn't pay off when you're running one or two apps on a small server. Flightdeck runs your code directly — the same way you'd run it if you SSH'd in and typed `node server.js`. Your 512MB VPS stays usable.
+
+**No vendor lock-in.** Flightdeck is a single static binary with an embedded UI. It stores everything in SQLite. There's no external database, no cloud dependency, no account to create. If you stop using it, your apps keep running — they're just processes on your server.
+
+**The idea is simple:** install flightdeck, open the dashboard, deploy your app, point a domain at it. SSL works automatically. If you need to install Node or Python, do it from the Settings page. When your project takes off and you need real infrastructure, migrate. Until then, this is enough.
 
 ## Install
 
