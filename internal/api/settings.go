@@ -7,6 +7,7 @@ import (
 
 	"github.com/sahithvibudhi/flightdeck/internal/db"
 	"github.com/sahithvibudhi/flightdeck/internal/proxy"
+	"github.com/sahithvibudhi/flightdeck/internal/setup"
 	"github.com/sahithvibudhi/flightdeck/internal/system"
 )
 
@@ -111,4 +112,29 @@ func (h *SettingsHandler) SystemInfo(w http.ResponseWriter, r *http.Request) {
 
 func (h *SettingsHandler) ServerMetrics(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, system.GetHistory(h.database))
+}
+
+type installRuntimeRequest struct {
+	Name string `json:"name"`
+}
+
+func (h *SettingsHandler) InstallRuntime(w http.ResponseWriter, r *http.Request) {
+	var req installRuntimeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if req.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+
+	output, err := setup.InstallRuntime(req.Name)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": req.Name + " installed", "output": output})
 }

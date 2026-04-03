@@ -30,7 +30,9 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret 
 			r.Get("/apps", appsHandler.List)
 			r.Post("/apps", appsHandler.Create)
 			r.Get("/apps/{id}", appsHandler.Get)
+			r.Put("/apps/{id}", appsHandler.Update)
 			r.Delete("/apps/{id}", appsHandler.Delete)
+			r.Post("/apps/{id}/upload", appsHandler.Upload)
 			r.Post("/apps/{id}/start", appsHandler.Start)
 			r.Post("/apps/{id}/stop", appsHandler.Stop)
 			r.Post("/apps/{id}/restart", appsHandler.Restart)
@@ -49,6 +51,7 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret 
 			r.Put("/settings/git-token", settingsHandler.UpdateGitToken)
 			r.Get("/system", settingsHandler.SystemInfo)
 			r.Get("/system/metrics", settingsHandler.ServerMetrics)
+			r.Post("/system/install", settingsHandler.InstallRuntime)
 		})
 	})
 

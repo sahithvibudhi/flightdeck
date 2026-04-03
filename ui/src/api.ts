@@ -59,6 +59,7 @@ export interface App {
   name: string;
   port: number;
   start_command: string;
+  build_command: string;
   status: string;
   repo_url: string | null;
   branch: string | null;
@@ -81,9 +82,40 @@ export const getAppLogs = (id: string, lines = 100) =>
 export const createApp = (data: {
   name: string;
   start_command: string;
+  build_command?: string;
+  port?: number;
   repo_url?: string;
   branch?: string;
 }) => request<App>('/apps', { method: 'POST', body: JSON.stringify(data) });
+
+export const updateApp = (id: string, data: {
+  name?: string;
+  start_command?: string;
+  build_command?: string;
+  port?: number;
+  repo_url?: string;
+  branch?: string;
+}) => request<App>(`/apps/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
+export async function uploadZip(appId: string, file: File): Promise<{ message: string }> {
+  const token = getToken();
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${BASE}/apps/${appId}/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Upload failed');
+  return data;
+}
+
+export const installRuntime = (name: string) =>
+  request<{ message: string; output: string }>('/system/install', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  });
 
 export interface EnvVar {
   key: string;

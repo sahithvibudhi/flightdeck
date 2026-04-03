@@ -24,7 +24,7 @@ func seedTestConfig(t *testing.T, database *sql.DB, passwordHash, jwtSecret stri
 
 func seedTestApp(t *testing.T, database *sql.DB, name string, port int) *dbpkg.App {
 	t.Helper()
-	app, err := dbpkg.InsertApp(database, name, "echo hello", port, "/tmp/"+name+".log", sql.NullString{}, sql.NullString{})
+	app, err := dbpkg.InsertApp(database, name, "echo hello", "", port, "/tmp/"+name+".log", sql.NullString{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("seed app: %v", err)
 	}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
-  getApp, deleteApp, startApp, stopApp, restartApp, pullApp,
+  getApp, deleteApp, startApp, stopApp, restartApp, pullApp, updateApp,
   getAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
   type App, type EnvVar, type DomainEntry,
 } from '../api';
@@ -25,6 +25,12 @@ export default function AppDetail() {
   const [pulling, setPulling] = useState(false);
   const [pullOutput, setPullOutput] = useState('');
   const [actionLoading, setActionLoading] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editStartCmd, setEditStartCmd] = useState('');
+  const [editBuildCmd, setEditBuildCmd] = useState('');
+  const [editRepoUrl, setEditRepoUrl] = useState('');
+  const [editBranch, setEditBranch] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -151,6 +157,34 @@ export default function AppDetail() {
     }
   }
 
+  function startEditing() {
+    if (!app) return;
+    setEditName(app.name);
+    setEditStartCmd(app.start_command);
+    setEditBuildCmd(app.build_command || '');
+    setEditRepoUrl(app.repo_url || '');
+    setEditBranch(app.branch || '');
+    setEditing(true);
+  }
+
+  async function handleSaveConfig(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    try {
+      await updateApp(id!, {
+        name: editName,
+        start_command: editStartCmd,
+        build_command: editBuildCmd,
+        repo_url: editRepoUrl || undefined,
+        branch: editBranch || undefined,
+      });
+      setEditing(false);
+      await loadApp();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  }
+
   if (!app) {
     return (
       <div className="layout">
@@ -254,6 +288,66 @@ export default function AppDetail() {
         )}
 
         <div className="section mt-md">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2>Configuration</h2>
+            {!editing && <button className="btn btn-secondary btn-sm" onClick={startEditing}>Edit</button>}
+          </div>
+          {editing ? (
+            <form onSubmit={handleSaveConfig}>
+              <div className="config-grid">
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label>App name</label>
+                  <input value={editName} onChange={e => setEditName(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label>Start command</label>
+                  <input value={editStartCmd} onChange={e => setEditStartCmd(e.target.value)} />
+                </div>
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label>Build command</label>
+                  <input value={editBuildCmd} onChange={e => setEditBuildCmd(e.target.value)} placeholder="e.g. npm install" />
+                </div>
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label>Repository URL</label>
+                  <input value={editRepoUrl} onChange={e => setEditRepoUrl(e.target.value)} placeholder="https://github.com/..." />
+                </div>
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label>Branch</label>
+                  <input value={editBranch} onChange={e => setEditBranch(e.target.value)} placeholder="main" />
+                </div>
+              </div>
+              <div className="flex gap-sm mt-sm">
+                <button type="submit" className="btn btn-primary btn-sm">Save</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditing(false)}>Cancel</button>
+              </div>
+            </form>
+          ) : (
+            <div className="config-grid">
+              <div className="config-item">
+                <span className="config-item-label">Start command</span>
+                <span className="config-item-value">{app.start_command}</span>
+              </div>
+              {app.build_command && (
+                <div className="config-item">
+                  <span className="config-item-label">Build command</span>
+                  <span className="config-item-value">{app.build_command}</span>
+                </div>
+              )}
+              <div className="config-item">
+                <span className="config-item-label">Source</span>
+                <span className="config-item-value">
+                  {app.repo_url ? `${app.repo_url} (${app.branch || 'main'})` : 'Local / uploaded'}
+                </span>
+              </div>
+              <div className="config-item">
+                <span className="config-item-label">Port</span>
+                <span className="config-item-value">{app.port}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="section">
           <h2>Logs</h2>
           <div className="log-output" ref={logRef}>
             {logs.length > 0 ? logs.join('\n') : 'Waiting for output...'}

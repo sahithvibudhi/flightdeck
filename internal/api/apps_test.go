@@ -188,7 +188,7 @@ func TestLogs_WithFile(t *testing.T) {
 
 	logPath := dir + "/test.log"
 	os.WriteFile(logPath, []byte("line1\nline2\nline3\n"), 0644)
-	app, _ := dbpkg.InsertApp(db, "logapp", "echo", 4000, logPath, sql.NullString{}, sql.NullString{})
+	app, _ := dbpkg.InsertApp(db, "logapp", "echo", "", 4000, logPath, sql.NullString{}, sql.NullString{})
 	h := NewAppsHandler(db, pm, dir)
 
 	req := withURLParam(httptest.NewRequest("GET", "/api/apps/"+app.ID+"/logs?lines=2", nil), "id", app.ID)

@@ -55,6 +55,7 @@ type App struct {
 	Branch    sql.NullString
 	Port      int
 	StartCmd  string
+	BuildCmd  string
 	Status    string
 	PID       sql.NullInt64
 	LogPath   string
@@ -63,7 +64,7 @@ type App struct {
 
 func ListApps(db *sql.DB) ([]App, error) {
 	rows, err := db.Query(
-		`SELECT id, name, repo_url, branch, port, start_cmd, status, pid, log_path, created_at FROM apps ORDER BY created_at`,
+		`SELECT id, name, repo_url, branch, port, start_cmd, build_cmd, status, pid, log_path, created_at FROM apps ORDER BY created_at`,
 	)
 	if err != nil {
 		return nil, err
@@ -73,7 +74,7 @@ func ListApps(db *sql.DB) ([]App, error) {
 	var apps []App
 	for rows.Next() {
 		var a App
-		if err := rows.Scan(&a.ID, &a.Name, &a.RepoURL, &a.Branch, &a.Port, &a.StartCmd, &a.Status, &a.PID, &a.LogPath, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.ID, &a.Name, &a.RepoURL, &a.Branch, &a.Port, &a.StartCmd, &a.BuildCmd, &a.Status, &a.PID, &a.LogPath, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		apps = append(apps, a)
@@ -84,8 +85,8 @@ func ListApps(db *sql.DB) ([]App, error) {
 func GetApp(db *sql.DB, id string) (*App, error) {
 	var a App
 	err := db.QueryRow(
-		`SELECT id, name, repo_url, branch, port, start_cmd, status, pid, log_path, created_at FROM apps WHERE id = ?`, id,
-	).Scan(&a.ID, &a.Name, &a.RepoURL, &a.Branch, &a.Port, &a.StartCmd, &a.Status, &a.PID, &a.LogPath, &a.CreatedAt)
+		`SELECT id, name, repo_url, branch, port, start_cmd, build_cmd, status, pid, log_path, created_at FROM apps WHERE id = ?`, id,
+	).Scan(&a.ID, &a.Name, &a.RepoURL, &a.Branch, &a.Port, &a.StartCmd, &a.BuildCmd, &a.Status, &a.PID, &a.LogPath, &a.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -104,11 +105,11 @@ func NextPort(db *sql.DB) (int, error) {
 	return int(port.Int64) + 1, nil
 }
 
-func InsertApp(db *sql.DB, name, startCmd string, port int, logPath string, repoURL, branch sql.NullString) (*App, error) {
+func InsertApp(db *sql.DB, name, startCmd, buildCmd string, port int, logPath string, repoURL, branch sql.NullString) (*App, error) {
 	id := uuid.New().String()
 	_, err := db.Exec(
-		`INSERT INTO apps (id, name, repo_url, branch, port, start_cmd, status, log_path) VALUES (?, ?, ?, ?, ?, ?, 'stopped', ?)`,
-		id, name, repoURL, branch, port, startCmd, logPath,
+		`INSERT INTO apps (id, name, repo_url, branch, port, start_cmd, build_cmd, status, log_path) VALUES (?, ?, ?, ?, ?, ?, ?, 'stopped', ?)`,
+		id, name, repoURL, branch, port, startCmd, buildCmd, logPath,
 	)
 	if err != nil {
 		return nil, err
@@ -123,6 +124,14 @@ func UpdateAppStatus(db *sql.DB, id, status string, pid sql.NullInt64) error {
 
 func DeleteApp(db *sql.DB, id string) error {
 	_, err := db.Exec(`DELETE FROM apps WHERE id = ?`, id)
+	return err
+}
+
+func UpdateApp(db *sql.DB, id, name, startCmd, buildCmd string, port int, repoURL, branch sql.NullString) error {
+	_, err := db.Exec(
+		`UPDATE apps SET name = ?, start_cmd = ?, build_cmd = ?, port = ?, repo_url = ?, branch = ? WHERE id = ?`,
+		name, startCmd, buildCmd, port, repoURL, branch, id,
+	)
 	return err
 }
 

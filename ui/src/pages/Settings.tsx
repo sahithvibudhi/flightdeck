@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   getSettings, updatePanelDomain, changePassword,
-  updateGitToken, getSystemInfo,
+  updateGitToken, getSystemInfo, installRuntime,
   type Settings as SettingsType, type SystemInfo,
 } from '../api';
 
@@ -15,6 +15,7 @@ export default function Settings() {
   const [newPw, setNewPw] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
+  const [installing, setInstalling] = useState<string | null>(null);
   const location = useLocation();
 
   useEffect(() => { loadAll(); }, []);
@@ -69,6 +70,20 @@ export default function Settings() {
     }
   }
 
+  async function handleInstall(name: string) {
+    setInstalling(name);
+    setError('');
+    try {
+      await installRuntime(name);
+      flash(`${name} installed successfully`);
+      await loadAll();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setInstalling(null);
+    }
+  }
+
   async function handlePassword(e: FormEvent) {
     e.preventDefault();
     setError('');
@@ -114,7 +129,7 @@ export default function Settings() {
                   </span>
                 </div>
                 {system.runtimes.map(r => (
-                  <div key={r.name} className={`runtime-card ${r.installed ? '' : 'runtime-card-missing'}`}>
+                  <div key={r.name} className={`runtime-card ${r.installed ? '' : 'runtime-card-installable'}`}>
                     <div className="runtime-card-header">
                       <span className={`runtime-dot ${r.installed ? 'runtime-dot-ok' : 'runtime-dot-fail'}`} />
                       <span className="runtime-card-name">{r.name}</span>
@@ -122,6 +137,16 @@ export default function Settings() {
                     <span className="runtime-card-version">
                       {r.installed ? r.version : 'Not installed'}
                     </span>
+                    {!r.installed && r.name !== 'Git' && (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => handleInstall(r.name)}
+                        disabled={installing !== null}
+                        style={{ width: '100%', marginTop: 8 }}
+                      >
+                        {installing === r.name ? <><span className="spinner" /> Installing...</> : 'Install'}
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>

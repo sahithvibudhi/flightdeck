@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -42,6 +43,7 @@ var migrations = []string{
 		domain     TEXT NOT NULL UNIQUE,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`,
+	`ALTER TABLE apps ADD COLUMN build_cmd TEXT DEFAULT ''`,
 }
 
 func Open(path string) (*sql.DB, error) {
@@ -56,6 +58,9 @@ func Open(path string) (*sql.DB, error) {
 
 	for _, m := range migrations {
 		if _, err := db.Exec(m); err != nil {
+			if strings.Contains(err.Error(), "duplicate column") {
+				continue
+			}
 			return nil, fmt.Errorf("run migration: %w", err)
 		}
 	}

@@ -56,6 +56,21 @@ func (m *Manager) StartApp(app *db.App) error {
 		return fmt.Errorf("open log file: %w", err)
 	}
 
+	if app.BuildCmd != "" {
+		fmt.Fprintf(logFile, "=== Running build: %s ===\n", app.BuildCmd)
+		buildCmd := exec.Command("sh", "-c", app.BuildCmd)
+		buildCmd.Dir = appDir
+		buildCmd.Stdout = logFile
+		buildCmd.Stderr = logFile
+		buildCmd.Env = m.buildEnv(app.ID, app.Port)
+		if err := buildCmd.Run(); err != nil {
+			fmt.Fprintf(logFile, "=== Build failed: %v ===\n", err)
+			logFile.Close()
+			return fmt.Errorf("build command failed: %w", err)
+		}
+		fmt.Fprintf(logFile, "=== Build complete ===\n")
+	}
+
 	parts := strings.Fields(app.StartCmd)
 	if len(parts) == 0 {
 		logFile.Close()

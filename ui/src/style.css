@@ -563,6 +563,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 }
 
 .runtime-card-missing { opacity: 0.3; }
+.runtime-card-installable { opacity: 1; }
 .runtime-card-header { display: flex; align-items: center; gap: 6px; }
 .runtime-card-name { font-size: 12px; font-weight: 500; }
 .runtime-card-version { font-size: 11px; font-family: var(--font-mono); color: var(--text-tertiary); }
@@ -753,6 +754,77 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 .source-card-desc {
   font-size: 12px;
   color: var(--text-tertiary);
+}
+
+.source-tabs {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.source-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition);
+  height: auto;
+}
+
+.source-tab:last-child { border-right: none; }
+.source-tab:hover { background: var(--surface-hover); color: var(--text); }
+.source-tab-active { background: var(--card); color: var(--text); }
+
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition);
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.upload-zone:hover { border-color: var(--border-hover); }
+.upload-zone-active { border-color: var(--text); background: var(--surface); color: var(--text); }
+
+.config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.config-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.config-item-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.config-item-value {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  word-break: break-all;
 }
 
 .deploy-actions {
