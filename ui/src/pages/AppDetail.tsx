@@ -29,6 +29,7 @@ export default function AppDetail() {
   const [editName, setEditName] = useState('');
   const [editStartCmd, setEditStartCmd] = useState('');
   const [editBuildCmd, setEditBuildCmd] = useState('');
+  const [editPort, setEditPort] = useState('');
   const [editRepoUrl, setEditRepoUrl] = useState('');
   const [editBranch, setEditBranch] = useState('');
 
@@ -162,6 +163,7 @@ export default function AppDetail() {
     setEditName(app.name);
     setEditStartCmd(app.start_command);
     setEditBuildCmd(app.build_command || '');
+    setEditPort(String(app.port));
     setEditRepoUrl(app.repo_url || '');
     setEditBranch(app.branch || '');
     setEditing(true);
@@ -175,6 +177,7 @@ export default function AppDetail() {
         name: editName,
         start_command: editStartCmd,
         build_command: editBuildCmd,
+        port: parseInt(editPort, 10) || undefined,
         repo_url: editRepoUrl || undefined,
         branch: editBranch || undefined,
       });
@@ -306,6 +309,10 @@ export default function AppDetail() {
                 <div className="form-group" style={{ marginBottom: 12 }}>
                   <label>Build command</label>
                   <input value={editBuildCmd} onChange={e => setEditBuildCmd(e.target.value)} placeholder="e.g. npm install" />
+                </div>
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label>Port</label>
+                  <input value={editPort} onChange={e => setEditPort(e.target.value.replace(/\D/g, ''))} placeholder="e.g. 3000" />
                 </div>
                 <div className="form-group" style={{ marginBottom: 12 }}>
                   <label>Repository URL</label>

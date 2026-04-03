@@ -341,6 +341,16 @@ export default function Deploy() {
         </div>
 
         <div className="form-group">
+          <label>Port <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
+          <input
+            value={appPort}
+            onChange={e => setAppPort(e.target.value.replace(/\D/g, ''))}
+            placeholder="Auto-assigned if empty (e.g. 3000, 8080)"
+          />
+          <p className="form-hint">The port your app listens on. Leave empty to auto-assign.</p>
+        </div>
+
+        <div className="form-group">
           <label>Build command <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
           <input
             value={buildCmd}
