@@ -12,6 +12,28 @@ function formatMemory(mb: number): string {
   return '—';
 }
 
+ 
+
+function EyeIcon(){
+  return(
+    <svg width = "14" height ="14" viewBox = "0 0 24 24" fill = "none" stroke ="currentColor" strokeWidth = "1.5">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy ="12" r="3" />
+    </svg>
+  );
+  }
+
+function EyeOffIcon(){
+  return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+  strokeWidth="1.5">                                                                                 
+        <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
+        <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />             
+        <line x1="1" y1="1" x2="23" y2="23" />                                                       
+      </svg>                                                                                         
+    ); 
+  }
+
 export default function AppDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -32,6 +54,7 @@ export default function AppDetail() {
   const [editPort, setEditPort] = useState('');
   const [editRepoUrl, setEditRepoUrl] = useState('');
   const [editBranch, setEditBranch] = useState('');
+  const [shownEnvValues, setShownEnvValues] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!id) return;
@@ -122,6 +145,14 @@ export default function AppDetail() {
 
   function removeEnvRow(index: number) {
     setEnvs(envs.filter((_, i) => i !== index));
+  }
+
+  function toggleEnvVisibility(index: number){
+    setShownEnvValues(prev =>{
+      const next = new Set(prev);
+      next.has(index) ? next.delete(index) : next.add(index);
+      return next;
+    });
   }
 
   async function saveEnvs(e: FormEvent) {
@@ -364,13 +395,18 @@ export default function AppDetail() {
         <div className="section">
           <h2>Environment Variables</h2>
           <form onSubmit={saveEnvs}>
-            {envs.map((env, i) => (
-              <div key={i} className="env-row">
+            {envs.map((env, i) => {
+              const visible = shownEnvValues.has(i);                                                                                                
+              return (                                            
+              <div key={i} className="env-row">                                                                                                   
                 <input placeholder="KEY" value={env.key} onChange={e => updateEnv(i, 'key', e.target.value)} />
-                <input placeholder="value" value={env.value} onChange={e => updateEnv(i, 'value', e.target.value)} />
+                <input placeholder="value" type={visible ? 'text' : 'password'} autoComplete="new-password" value={env.value} onChange={e => updateEnv(i, 'value', e.target.value)} />                                                                                                                                
+                <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => toggleEnvVisibility(i)} title={visible ? 'Hide value' : 'Show value'} >  {visible ? <EyeOffIcon /> : <EyeIcon />}  </button>                                     
+                                                                                                                                                                                                                                           
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEnvRow(i)} style={{ flexShrink: 0 }}>Remove</button>
-              </div>
-            ))}
+              </div>                                                                                                                              
+              );
+            })}
             <div className="flex gap-sm mt-sm">
               <button type="button" className="btn btn-ghost btn-sm" onClick={addEnvRow}>Add variable</button>
               <button type="submit" className="btn btn-primary btn-sm">Save changes</button>
@@ -393,5 +429,4 @@ export default function AppDetail() {
         </div>
       </div>
     </div>
-  );
-}
+  );} 

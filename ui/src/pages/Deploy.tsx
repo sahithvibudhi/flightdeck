@@ -33,6 +33,28 @@ function GitHubIcon() {
   );
 }
 
+
+function EyeIcon(){
+  return(
+    <svg width = "14" height ="14" viewBox = "0 0 24 24" fill = "none" stroke ="currentColor" strokeWidth = "1.5">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy ="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon(){
+  return (
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
+  strokeWidth="1.5">                                                                                 
+        <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
+        <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />             
+        <line x1="1" y1="1" x2="23" y2="23" />                                                       
+      </svg>                                                                                         
+    ); 
+}
+
+
 export default function Deploy() {
   const navigate = useNavigate();
   const logRef = useRef<HTMLDivElement>(null);
@@ -53,6 +75,7 @@ export default function Deploy() {
 
   const [envs, setEnvs] = useState<EnvVar[]>([]);
   const [showEnvs, setShowEnvs] = useState(false);
+  const [shownEnvValues, setShownEnvValues] = useState<Set<number>>(new Set());
   const [error, setError] = useState('');
 
   const [createdApp, setCreatedApp] = useState<App | null>(null);
@@ -111,6 +134,14 @@ export default function Deploy() {
 
   function removeEnvRow(index: number) {
     setEnvs(envs.filter((_, i) => i !== index));
+  }
+
+  function toggleEnvVisibility(index: number){
+    setShownEnvValues(prev =>{
+      const next = new Set(prev);
+      next.has(index) ? next.delete(index) : next.add(index);
+      return next;
+    });
   }
 
   async function handleDeploy() {
@@ -368,7 +399,10 @@ export default function Deploy() {
 
           {showEnvs && (
             <div className="fade-in" style={{ marginTop: 12 }}>
-              {envs.map((env, i) => (
+              {envs.map((env, i) => {
+
+                const visible = shownEnvValues.has(i);
+                return (
                 <div key={i} className="env-row">
                   <input
                     placeholder="KEY"
@@ -379,14 +413,23 @@ export default function Deploy() {
                   <input
                     placeholder="value"
                     value={env.value}
+                    type={visible ? 'text' : 'password'}
                     onChange={e => updateEnv(i, 'value', e.target.value)}
                     style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
                   />
+                  <button
+                    type = "button"
+                    className = "btn btn-ghost btn-sm btn-icon"
+                    onClick ={() => toggleEnvVisibility(i)}
+                    title = {visible ? 'Hide value' : 'Show value'} >
+                      {visible ? <EyeOffIcon/> : <EyeIcon/>}
+                  </button>
+
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEnvRow(i)} style={{ flexShrink: 0 }}>
                     ×
                   </button>
-                </div>
-              ))}
+                </div>);
+              })}
               <button type="button" className="btn-text" onClick={addEnvRow} style={{ marginTop: envs.length > 0 ? 8 : 0 }}>
                 + Add variable
               </button>
