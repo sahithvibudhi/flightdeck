@@ -511,6 +511,16 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   color: var(--text-secondary);
 }
 
+.deployment-commit {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
+}
+
 .deployment-time {
   color: var(--text-tertiary);
   font-size: 12px;

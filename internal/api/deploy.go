@@ -18,6 +18,8 @@ type deploymentResponse struct {
 	TriggeredBy string  `json:"triggered_by"`
 	Status      string  `json:"status"`
 	Detail      string  `json:"detail"`
+	CommitSHA   string  `json:"commit_sha"`
+	CommitMsg   string  `json:"commit_msg"`
 	StartedAt   string  `json:"started_at"`
 	FinishedAt  *string `json:"finished_at"`
 }
@@ -70,6 +72,10 @@ func (h *AppsHandler) executeDeploy(app *db.App, depID string) {
 			return
 		}
 		detail = out
+
+		if sha, msg, err := git.Head(h.appDir(app)); err == nil {
+			db.SetDeploymentCommit(h.database, depID, sha, msg)
+		}
 	}
 
 	if err := h.pm.DeployRestart(app); err != nil {
@@ -144,6 +150,8 @@ func (h *AppsHandler) ListDeployments(w http.ResponseWriter, r *http.Request) {
 			TriggeredBy: d.TriggeredBy,
 			Status:      d.Status,
 			Detail:      d.Detail,
+			CommitSHA:   d.CommitSHA,
+			CommitMsg:   d.CommitMsg,
 			StartedAt:   d.StartedAt,
 		}
 		if d.FinishedAt.Valid {
