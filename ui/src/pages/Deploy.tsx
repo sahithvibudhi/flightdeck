@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   createApp, startApp, getAppLogs, getSystemInfo, uploadZip,
-  errMsg,
+  errMsg, findInvalidEnv,
   type App, type EnvVar, type SystemInfo,
   replaceEnvs,
 } from '../api';
@@ -145,6 +145,10 @@ export default function Deploy() {
       }
 
       const validEnvs = envs.filter(e => e.key.trim() !== '');
+      const invalidEnv = findInvalidEnv(validEnvs);
+      if (invalidEnv) {
+        throw new Error(invalidEnv);
+      }
       if (validEnvs.length > 0) {
         await replaceEnvs(app.id, validEnvs);
         setLogs(prev => [...prev, `Set ${validEnvs.length} environment variable(s)`]);
