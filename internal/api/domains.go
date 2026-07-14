@@ -56,8 +56,9 @@ func (h *DomainsHandler) Add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Domain == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "domain is required"})
+	domain, err := normalizeDomain(req.Domain)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -67,14 +68,14 @@ func (h *DomainsHandler) Add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, err := db.InsertDomain(h.database, appID, req.Domain)
+	d, err := db.InsertDomain(h.database, appID, domain)
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "domain already registered"})
 		return
 	}
 
 	// Register with Caddy
-	if err := proxy.AddRoute(d.ID, req.Domain, app.EffectivePort()); err != nil {
+	if err := proxy.AddRoute(d.ID, domain, app.EffectivePort()); err != nil {
 		// Rollback domain from db
 		db.DeleteDomain(h.database, d.ID)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to register domain with proxy"})

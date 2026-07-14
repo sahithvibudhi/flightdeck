@@ -217,10 +217,11 @@ export default function AppDetail() {
 
   async function handleAddDomain(e: FormEvent) {
     e.preventDefault();
-    if (!newDomain) return;
+    const domain = newDomain.trim().toLowerCase();
+    if (!domain) return;
     setError('');
     try {
-      await addDomain(id!, newDomain);
+      await addDomain(id!, domain);
       setNewDomain('');
       await loadDomains();
       toast('Domain added — SSL certificate provisions automatically');

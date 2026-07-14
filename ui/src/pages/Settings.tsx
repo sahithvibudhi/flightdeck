@@ -40,7 +40,7 @@ export default function Settings() {
     e.preventDefault();
     setError('');
     try {
-      await updatePanelDomain(domain);
+      await updatePanelDomain(domain.trim().toLowerCase());
       flash('Domain updated');
     } catch (err) {
       setError(errMsg(err));

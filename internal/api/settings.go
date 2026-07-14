@@ -63,6 +63,16 @@ func (h *SettingsHandler) UpdateDomain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Empty domain means "remove the panel domain" and skips validation.
+	if req.Domain != "" {
+		domain, err := normalizeDomain(req.Domain)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		req.Domain = domain
+	}
+
 	cfg, err := db.GetConfig(h.database)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to get config"})
