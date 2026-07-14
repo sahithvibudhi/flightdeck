@@ -60,7 +60,10 @@ var migrations = []string{
 }
 
 func Open(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)")
+	// busy_timeout makes concurrent writers wait instead of failing with
+	// SQLITE_BUSY — e.g. deleting an app races the process watcher's
+	// status update when the app was just stopped.
+	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}

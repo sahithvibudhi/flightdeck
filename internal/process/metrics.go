@@ -48,19 +48,14 @@ func (m *Manager) GetAppMetrics(appID string) Metrics {
 	p, running := m.procs[appID]
 	m.mu.Unlock()
 
-	if !running || p.cmd.Process == nil {
+	if !running || p.pid <= 0 {
 		return Metrics{}
 	}
 
-	return GetMetrics(p.cmd.Process.Pid)
+	return GetMetrics(p.pid)
 }
 
 func roundTo(val float64, places int) float64 {
-	p := 1.0
-	for range places {
-		p *= 10
-	}
 	rounded, _ := strconv.ParseFloat(fmt.Sprintf("%.*f", places, val), 64)
-	_ = p
 	return rounded
 }

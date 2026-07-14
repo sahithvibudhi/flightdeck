@@ -24,3 +24,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Rebooting the server no longer re-runs every app's build command.
 - The "Replace" button for the GitHub token in Settings now works.
 - Git tokens are no longer embedded in clone URLs (they leaked into `ps` output and error messages); credentials are passed via environment instead.
+- Deleting an app that was just stopped no longer fails with a database-busy error (SQLite busy_timeout).
+- Restarting or upgrading flightdeck no longer duplicates app processes: running apps are re-adopted by PID on boot and keep serving without interruption.
+- Deleting an app now removes its managed directory and logs (a user-provided `work_dir` is never touched).
