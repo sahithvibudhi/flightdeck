@@ -8,22 +8,26 @@ import (
 	"github.com/sahithvibudhi/flightdeck/internal/proxy"
 )
 
-func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret string) *chi.Mux {
+func NewRouter(database *sql.DB, pm *process.Manager, dataDir string) *chi.Mux {
 	r := chi.NewRouter()
 
 	SetRouteRemover(proxy.RemoveRoute)
+	SetRouteAdder(proxy.AddRoute)
 
 	authHandler := NewAuthHandler(database)
 	appsHandler := NewAppsHandler(database, pm, dataDir)
 	envsHandler := NewEnvsHandler(database)
 	domainsHandler := NewDomainsHandler(database)
 	settingsHandler := NewSettingsHandler(database)
+	setupHandler := NewSetupHandler(database)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/auth/login", authHandler.Login)
+		r.Get("/setup/status", setupHandler.Status)
+		r.Post("/setup", setupHandler.Complete)
 
 		r.Group(func(r chi.Router) {
-			r.Use(AuthMiddleware(jwtSecret))
+			r.Use(DBAuthMiddleware(database))
 
 			r.Post("/auth/password", authHandler.ChangePassword)
 

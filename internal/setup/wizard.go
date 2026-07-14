@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sahithvibudhi/flightdeck/internal/auth"
 	"github.com/sahithvibudhi/flightdeck/internal/db"
 	"golang.org/x/term"
 )
@@ -69,27 +68,8 @@ func RunWizard(database *sql.DB) error {
 	}
 	domain = strings.TrimSpace(domain)
 
-	hash, err := auth.HashPassword(password)
-	if err != nil {
+	if err := CreateConfig(database, username, password, domain); err != nil {
 		return err
-	}
-
-	secret, err := auth.GenerateSecret()
-	if err != nil {
-		return err
-	}
-
-	cfg := &db.Config{
-		AdminUsername: username,
-		AdminPassword: hash,
-		JWTSecret:     secret,
-	}
-	if domain != "" {
-		cfg.PanelDomain = sql.NullString{String: domain, Valid: true}
-	}
-
-	if err := db.InsertConfig(database, cfg); err != nil {
-		return fmt.Errorf("save config: %w", err)
 	}
 
 	fmt.Println()

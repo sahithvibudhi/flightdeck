@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -17,6 +18,8 @@ import (
 	"github.com/sahithvibudhi/flightdeck/internal/git"
 	"github.com/sahithvibudhi/flightdeck/internal/process"
 )
+
+var appNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
 type AppsHandler struct {
 	database *sql.DB
@@ -35,6 +38,7 @@ type createAppRequest struct {
 	Port     int    `json:"port"`
 	RepoURL  string `json:"repo_url"`
 	Branch   string `json:"branch"`
+	WorkDir  string `json:"work_dir"`
 }
 
 type updateAppRequest struct {
@@ -44,6 +48,7 @@ type updateAppRequest struct {
 	Port     int    `json:"port"`
 	RepoURL  string `json:"repo_url"`
 	Branch   string `json:"branch"`
+	WorkDir  string `json:"work_dir"`
 }
 
 type appResponse struct {
@@ -52,6 +57,7 @@ type appResponse struct {
 	Port      int      `json:"port"`
 	StartCmd  string   `json:"start_command"`
 	BuildCmd  string   `json:"build_command"`
+	WorkDir   string   `json:"work_dir"`
 	Status    string   `json:"status"`
 	RepoURL   *string  `json:"repo_url"`
 	Branch    *string  `json:"branch"`
@@ -79,6 +85,7 @@ func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
 		Port:      a.Port,
 		StartCmd:  a.StartCmd,
 		BuildCmd:  a.BuildCmd,
+		WorkDir:   a.WorkDir,
 		Status:    a.Status,
 		Domains:   domainNames,
 		CPU:       metrics.CPU,
@@ -120,6 +127,16 @@ func (h *AppsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !appNameRe.MatchString(req.Name) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name must be lowercase letters, digits, and hyphens (max 63 chars)"})
+		return
+	}
+
+	if req.WorkDir != "" && req.RepoURL != "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_dir and repo_url are mutually exclusive"})
+		return
+	}
+
 	if req.Branch == "" {
 		req.Branch = "main"
 	}
@@ -139,35 +156,58 @@ func (h *AppsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	appDir := filepath.Join(h.dataDir, "apps", req.Name)
 	logPath := filepath.Join(appDir, "app.log")
 
+	if req.WorkDir != "" {
+		if !filepath.IsAbs(req.WorkDir) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_dir must be an absolute path"})
+			return
+		}
+		info, err := os.Stat(req.WorkDir)
+		if err != nil || !info.IsDir() {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "work_dir does not exist or is not a directory"})
+			return
+		}
+		// Apps running from an existing server path keep their logs under
+		// the data dir so we never write into the user's directory tree.
+		logPath = filepath.Join(h.dataDir, "logs", req.Name+".log")
+		if err := os.MkdirAll(filepath.Join(h.dataDir, "logs"), 0755); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create log directory"})
+			return
+		}
+	}
+
 	var repoURL, branch sql.NullString
 	if req.RepoURL != "" {
 		repoURL = sql.NullString{String: req.RepoURL, Valid: true}
 		branch = sql.NullString{String: req.Branch, Valid: true}
 
-		cfg, err := db.GetConfig(h.database)
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to read config"})
-			return
-		}
-
-		var token string
-		if cfg.GitToken.Valid {
-			token = cfg.GitToken.String
-		}
-
-		if err := git.Clone(req.RepoURL, appDir, req.Branch, token); err != nil {
+		if err := git.Clone(req.RepoURL, appDir, req.Branch, h.gitToken()); err != nil {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
 			return
 		}
 	}
 
-	app, err := db.InsertApp(h.database, req.Name, req.StartCmd, req.BuildCmd, port, logPath, repoURL, branch)
+	app, err := db.InsertApp(h.database, req.Name, req.StartCmd, req.BuildCmd, req.WorkDir, port, logPath, repoURL, branch)
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "app name already exists or port conflict"})
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, h.buildAppResponse(app))
+}
+
+func (h *AppsHandler) gitToken() string {
+	cfg, err := db.GetConfig(h.database)
+	if err != nil || !cfg.GitToken.Valid {
+		return ""
+	}
+	return cfg.GitToken.String
+}
+
+func (h *AppsHandler) appDir(app *db.App) string {
+	if app.WorkDir != "" {
+		return app.WorkDir
+	}
+	return filepath.Join(h.dataDir, "apps", app.Name)
 }
 
 func (h *AppsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -247,8 +287,7 @@ func (h *AppsHandler) Pull(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appDir := filepath.Join(h.dataDir, "apps", app.Name)
-	output, err := git.Pull(appDir)
+	output, err := git.Pull(h.appDir(app), h.gitToken())
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -307,6 +346,33 @@ func (h *AppsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Port <= 0 {
 		req.Port = existing.Port
 	}
+	if req.WorkDir == "" {
+		req.WorkDir = existing.WorkDir
+	}
+
+	if !appNameRe.MatchString(req.Name) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name must be lowercase letters, digits, and hyphens (max 63 chars)"})
+		return
+	}
+
+	renamed := req.Name != existing.Name
+	if renamed && h.pm.IsRunning(id) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "stop the app before renaming it"})
+		return
+	}
+
+	logPath := existing.LogPath
+	if renamed && existing.WorkDir == "" {
+		oldDir := filepath.Join(h.dataDir, "apps", existing.Name)
+		newDir := filepath.Join(h.dataDir, "apps", req.Name)
+		if _, err := os.Stat(oldDir); err == nil {
+			if err := os.Rename(oldDir, newDir); err != nil {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "failed to move app directory: " + err.Error()})
+				return
+			}
+		}
+		logPath = filepath.Join(newDir, "app.log")
+	}
 
 	var repoURL, branch sql.NullString
 	if req.RepoURL != "" {
@@ -318,12 +384,40 @@ func (h *AppsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		branch = sql.NullString{String: b, Valid: true}
 	}
 
-	if err := db.UpdateApp(h.database, id, req.Name, req.StartCmd, req.BuildCmd, req.Port, repoURL, branch); err != nil {
+	if err := db.UpdateApp(h.database, id, req.Name, req.StartCmd, req.BuildCmd, req.WorkDir, req.Port, logPath, repoURL, branch); err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "update failed: " + err.Error()})
 		return
 	}
 
 	app, _ := db.GetApp(h.database, id)
+	if app == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to reload app"})
+		return
+	}
+
+	// Config edits must take effect immediately: domains re-point at the
+	// new port, and a running process is restarted with the new command,
+	// port, and directory. Previously edits were silently inert until a
+	// manual stop/start, and port changes broke existing domains.
+	if app.Port != existing.Port {
+		domains, _ := db.ListDomains(h.database, id)
+		for _, d := range domains {
+			_ = removeRoute(d.ID)
+			if err := addRoute(d.ID, d.Domain, app.Port); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "app updated but failed to re-route domain " + d.Domain})
+				return
+			}
+		}
+	}
+
+	configChanged := app.Port != existing.Port || app.StartCmd != existing.StartCmd || app.WorkDir != existing.WorkDir
+	if configChanged && h.pm.IsRunning(id) {
+		if err := h.pm.RestartApp(app); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "app updated but restart failed: " + err.Error()})
+			return
+		}
+	}
+
 	writeJSON(w, http.StatusOK, h.buildAppResponse(app))
 }
 
@@ -360,7 +454,7 @@ func (h *AppsHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appDir := filepath.Join(h.dataDir, "apps", app.Name)
+	appDir := h.appDir(app)
 	if err := os.MkdirAll(appDir, 0755); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create app directory"})
 		return
@@ -422,4 +516,10 @@ var removeRoute = func(id string) error { return nil }
 
 func SetRouteRemover(fn func(string) error) {
 	removeRoute = fn
+}
+
+var addRoute = func(id, domain string, port int) error { return nil }
+
+func SetRouteAdder(fn func(string, string, int) error) {
+	addRoute = fn
 }

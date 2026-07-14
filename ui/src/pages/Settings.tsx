@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   getSettings, updatePanelDomain, changePassword,
   updateGitToken, getSystemInfo, installRuntime,
+  errMsg,
   type Settings as SettingsType, type SystemInfo,
 } from '../api';
 
@@ -16,6 +17,7 @@ export default function Settings() {
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
+  const [replacingToken, setReplacingToken] = useState(false);
   const location = useLocation();
 
   useEffect(() => { loadAll(); }, []);
@@ -26,7 +28,7 @@ export default function Settings() {
       setSettings(s);
       setSystem(sys);
       setDomain(s.panel_domain || '');
-    } catch {}
+    } catch { /* transient */ }
   }
 
   function flash(message: string) {
@@ -41,8 +43,8 @@ export default function Settings() {
     try {
       await updatePanelDomain(domain);
       flash('Domain updated');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -52,10 +54,11 @@ export default function Settings() {
     try {
       await updateGitToken(gitToken);
       setGitToken('');
+      setReplacingToken(false);
       await loadAll();
       flash('Git token updated');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -65,8 +68,8 @@ export default function Settings() {
       await updateGitToken('');
       await loadAll();
       flash('Git token removed');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -77,8 +80,8 @@ export default function Settings() {
       await installRuntime(name);
       flash(`${name} installed successfully`);
       await loadAll();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     } finally {
       setInstalling(null);
     }
@@ -92,8 +95,8 @@ export default function Settings() {
       setCurrentPw('');
       setNewPw('');
       flash('Password updated');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -158,21 +161,22 @@ export default function Settings() {
 
           <div className="card">
             <h2>Git Authentication</h2>
-            {settings?.has_git_token ? (
+            {settings?.has_git_token && !replacingToken ? (
               <div>
                 <div className="token-display">
-                  <span>ghp_••••••••••••••••••••</span>
+                  <span>••••••••••••••••••••</span>
                 </div>
                 <div className="flex gap-sm mt-sm">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setGitToken('')}>Replace</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setGitToken(''); setReplacingToken(true); }}>Replace</button>
                   <button className="btn btn-danger btn-sm" onClick={handleRemoveToken}>Remove token</button>
                 </div>
               </div>
             ) : (
               <form onSubmit={handleGitToken}>
                 <div className="form-group">
-                  <label>Personal access token</label>
+                  <label htmlFor="git-token">Personal access token</label>
                   <input
+                    id="git-token"
                     type="password"
                     value={gitToken}
                     onChange={e => setGitToken(e.target.value)}
@@ -180,7 +184,12 @@ export default function Settings() {
                   />
                   <p className="form-hint">Required for private repositories</p>
                 </div>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={!gitToken}>Save token</button>
+                <div className="flex gap-sm">
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={!gitToken}>Save token</button>
+                  {replacingToken && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReplacingToken(false)}>Cancel</button>
+                  )}
+                </div>
               </form>
             )}
           </div>

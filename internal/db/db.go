@@ -44,6 +44,7 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`,
 	`ALTER TABLE apps ADD COLUMN build_cmd TEXT DEFAULT ''`,
+	`ALTER TABLE apps ADD COLUMN work_dir TEXT DEFAULT ''`,
 }
 
 func Open(path string) (*sql.DB, error) {

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/sahithvibudhi/flightdeck/internal/db"
@@ -34,7 +35,23 @@ func NewManager(database *sql.DB, dataDir string) *Manager {
 	}
 }
 
+/*
+AppDir returns the directory an app runs in: its configured work_dir
+when deployed from an existing server path, otherwise the managed
+directory under the data dir.
+*/
+func (m *Manager) AppDir(app *db.App) string {
+	if app.WorkDir != "" {
+		return app.WorkDir
+	}
+	return filepath.Join(m.dataDir, "apps", app.Name)
+}
+
 func (m *Manager) StartApp(app *db.App) error {
+	return m.startApp(app, true)
+}
+
+func (m *Manager) startApp(app *db.App, runBuild bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -42,7 +59,7 @@ func (m *Manager) StartApp(app *db.App) error {
 		return fmt.Errorf("app %s is already running", app.Name)
 	}
 
-	appDir := filepath.Join(m.dataDir, "apps", app.Name)
+	appDir := m.AppDir(app)
 	if err := os.MkdirAll(appDir, 0755); err != nil {
 		return fmt.Errorf("create app dir: %w", err)
 	}
@@ -56,7 +73,7 @@ func (m *Manager) StartApp(app *db.App) error {
 		return fmt.Errorf("open log file: %w", err)
 	}
 
-	if app.BuildCmd != "" {
+	if runBuild && app.BuildCmd != "" {
 		fmt.Fprintf(logFile, "=== Running build: %s ===\n", app.BuildCmd)
 		buildCmd := exec.Command("sh", "-c", app.BuildCmd)
 		buildCmd.Dir = appDir
@@ -71,17 +88,21 @@ func (m *Manager) StartApp(app *db.App) error {
 		fmt.Fprintf(logFile, "=== Build complete ===\n")
 	}
 
-	parts := strings.Fields(app.StartCmd)
-	if len(parts) == 0 {
+	if strings.TrimSpace(app.StartCmd) == "" {
 		logFile.Close()
 		return fmt.Errorf("empty start command")
 	}
 
-	cmd := exec.Command(parts[0], parts[1:]...)
+	// The start command runs through a shell (like the build command) so
+	// quoting, pipes, && and env expansion all work. Setpgid puts the shell
+	// and everything it spawns in one process group, so stop/kill reaches
+	// the whole tree instead of orphaning grandchildren.
+	cmd := exec.Command("sh", "-c", app.StartCmd)
 	cmd.Dir = appDir
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.Env = m.buildEnv(app.ID, app.Port)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
@@ -114,12 +135,12 @@ func (m *Manager) StopApp(appID string) error {
 		return nil
 	}
 
-	p.cmd.Process.Signal(os.Interrupt)
+	signalGroup(p.cmd.Process.Pid, syscall.SIGINT)
 
 	select {
 	case <-p.done:
 	case <-time.After(10 * time.Second):
-		p.cmd.Process.Kill()
+		signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
 		<-p.done
 	}
 
@@ -148,12 +169,26 @@ func (m *Manager) RestoreRunning() error {
 	for _, app := range apps {
 		if app.Status == "running" {
 			a := app
-			if err := m.StartApp(&a); err != nil {
+			// Skip the build on restore: a reboot shouldn't re-run every
+			// app's npm install. Builds happen on deploy, pull, and
+			// explicit start/restart.
+			if err := m.startApp(&a, false); err != nil {
 				fmt.Fprintf(os.Stderr, "failed to restore app %s: %v\n", app.Name, err)
 			}
 		}
 	}
 	return nil
+}
+
+/*
+signalGroup signals the entire process group so children spawned by the
+start command's shell receive it too. Falls back to the single process
+if the group signal fails.
+*/
+func signalGroup(pid int, sig syscall.Signal) {
+	if err := syscall.Kill(-pid, sig); err != nil {
+		syscall.Kill(pid, sig)
+	}
 }
 
 /*

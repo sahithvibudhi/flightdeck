@@ -1,38 +1,18 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   getApp, deleteApp, startApp, stopApp, restartApp, pullApp, updateApp,
   getAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
+  errMsg,
   type App, type EnvVar, type DomainEntry,
 } from '../api';
+import { EyeIcon, EyeOffIcon } from '../components/Icons';
 
 function formatMemory(mb: number): string {
   if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
   if (mb > 0) return `${mb.toFixed(1)} MB`;
   return '—';
 }
-
- 
-
-function EyeIcon(){
-  return(
-    <svg width = "14" height ="14" viewBox = "0 0 24 24" fill = "none" stroke ="currentColor" strokeWidth = "1.5">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-      <circle cx="12" cy ="12" r="3" />
-    </svg>
-  );
-  }
-
-function EyeOffIcon(){
-  return (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" 
-  strokeWidth="1.5">                                                                                 
-        <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94" />
-        <path d="M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19" />             
-        <line x1="1" y1="1" x2="23" y2="23" />                                                       
-      </svg>                                                                                         
-    ); 
-  }
 
 export default function AppDetail() {
   const { id } = useParams<{ id: string }>();
@@ -54,18 +34,41 @@ export default function AppDetail() {
   const [editPort, setEditPort] = useState('');
   const [editRepoUrl, setEditRepoUrl] = useState('');
   const [editBranch, setEditBranch] = useState('');
+  const [editWorkDir, setEditWorkDir] = useState('');
   const [shownEnvValues, setShownEnvValues] = useState<Set<number>>(new Set());
+
+  const loadApp = useCallback(async () => {
+    try { setApp(await getApp(id!)); } catch { /* transient */ }
+  }, [id]);
+
+  const loadLogs = useCallback(async () => {
+    try {
+      const res = await getAppLogs(id!);
+      setLogs(res.lines);
+    } catch { /* transient */ }
+  }, [id]);
+
+  const loadEnvs = useCallback(async () => {
+    try { setEnvs(await listEnvs(id!)); } catch { /* transient */ }
+  }, [id]);
+
+  const loadDomains = useCallback(async () => {
+    try { setDomains(await listDomains(id!)); } catch { /* transient */ }
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
-    loadAll();
+    loadApp();
+    loadLogs();
+    loadEnvs();
+    loadDomains();
     const logInterval = setInterval(loadLogs, 3000);
     const metricInterval = setInterval(loadApp, 5000);
     return () => {
       clearInterval(logInterval);
       clearInterval(metricInterval);
     };
-  }, [id]);
+  }, [id, loadApp, loadLogs, loadEnvs, loadDomains]);
 
   useEffect(() => {
     if (logRef.current) {
@@ -73,37 +76,14 @@ export default function AppDetail() {
     }
   }, [logs]);
 
-  async function loadAll() {
-    await Promise.all([loadApp(), loadLogs(), loadEnvs(), loadDomains()]);
-  }
-
-  async function loadApp() {
-    try { setApp(await getApp(id!)); } catch {}
-  }
-
-  async function loadLogs() {
-    try {
-      const res = await getAppLogs(id!);
-      setLogs(res.lines);
-    } catch {}
-  }
-
-  async function loadEnvs() {
-    try { setEnvs(await listEnvs(id!)); } catch {}
-  }
-
-  async function loadDomains() {
-    try { setDomains(await listDomains(id!)); } catch {}
-  }
-
-  async function handleAction(label: string, action: () => Promise<any>) {
+  async function handleAction(label: string, action: () => Promise<unknown>) {
     setError('');
     setActionLoading(label);
     try {
       await action();
       await loadApp();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     } finally {
       setActionLoading('');
     }
@@ -116,8 +96,8 @@ export default function AppDetail() {
     try {
       const res = await pullApp(id!);
       setPullOutput(res.output);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     } finally {
       setPulling(false);
     }
@@ -128,8 +108,8 @@ export default function AppDetail() {
     try {
       await deleteApp(id!);
       navigate('/');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -147,10 +127,14 @@ export default function AppDetail() {
     setEnvs(envs.filter((_, i) => i !== index));
   }
 
-  function toggleEnvVisibility(index: number){
-    setShownEnvValues(prev =>{
+  function toggleEnvVisibility(index: number) {
+    setShownEnvValues(prev => {
       const next = new Set(prev);
-      next.has(index) ? next.delete(index) : next.add(index);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
       return next;
     });
   }
@@ -161,8 +145,8 @@ export default function AppDetail() {
     try {
       await replaceEnvs(id!, envs.filter(e => e.key.trim() !== ''));
       await loadEnvs();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -174,8 +158,8 @@ export default function AppDetail() {
       await addDomain(id!, newDomain);
       setNewDomain('');
       await loadDomains();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -184,8 +168,8 @@ export default function AppDetail() {
     try {
       await removeDomain(id!, domain);
       await loadDomains();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -197,6 +181,7 @@ export default function AppDetail() {
     setEditPort(String(app.port));
     setEditRepoUrl(app.repo_url || '');
     setEditBranch(app.branch || '');
+    setEditWorkDir(app.work_dir || '');
     setEditing(true);
   }
 
@@ -211,11 +196,12 @@ export default function AppDetail() {
         port: parseInt(editPort, 10) || undefined,
         repo_url: editRepoUrl || undefined,
         branch: editBranch || undefined,
+        work_dir: editWorkDir || undefined,
       });
       setEditing(false);
       await loadApp();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -330,29 +316,35 @@ export default function AppDetail() {
             <form onSubmit={handleSaveConfig}>
               <div className="config-grid">
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>App name</label>
-                  <input value={editName} onChange={e => setEditName(e.target.value)} />
+                  <label htmlFor="edit-name">App name</label>
+                  <input id="edit-name" value={editName} onChange={e => setEditName(e.target.value)} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>Start command</label>
-                  <input value={editStartCmd} onChange={e => setEditStartCmd(e.target.value)} />
+                  <label htmlFor="edit-start">Start command</label>
+                  <input id="edit-start" value={editStartCmd} onChange={e => setEditStartCmd(e.target.value)} />
                 </div>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>Build command</label>
-                  <input value={editBuildCmd} onChange={e => setEditBuildCmd(e.target.value)} placeholder="e.g. npm install" />
+                  <label htmlFor="edit-build">Build command</label>
+                  <input id="edit-build" value={editBuildCmd} onChange={e => setEditBuildCmd(e.target.value)} placeholder="e.g. npm install" />
                 </div>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>Port</label>
-                  <input value={editPort} onChange={e => setEditPort(e.target.value.replace(/\D/g, ''))} placeholder="e.g. 3000" />
+                  <label htmlFor="edit-port">Port</label>
+                  <input id="edit-port" value={editPort} onChange={e => setEditPort(e.target.value.replace(/\D/g, ''))} placeholder="e.g. 3000" />
                 </div>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>Repository URL</label>
-                  <input value={editRepoUrl} onChange={e => setEditRepoUrl(e.target.value)} placeholder="https://github.com/..." />
+                  <label htmlFor="edit-repo">Repository URL</label>
+                  <input id="edit-repo" value={editRepoUrl} onChange={e => setEditRepoUrl(e.target.value)} placeholder="https://github.com/..." />
                 </div>
                 <div className="form-group" style={{ marginBottom: 12 }}>
-                  <label>Branch</label>
-                  <input value={editBranch} onChange={e => setEditBranch(e.target.value)} placeholder="main" />
+                  <label htmlFor="edit-branch">Branch</label>
+                  <input id="edit-branch" value={editBranch} onChange={e => setEditBranch(e.target.value)} placeholder="main" />
                 </div>
+                {app.work_dir && (
+                  <div className="form-group" style={{ marginBottom: 12 }}>
+                    <label htmlFor="edit-workdir">Working directory</label>
+                    <input id="edit-workdir" value={editWorkDir} onChange={e => setEditWorkDir(e.target.value)} placeholder="/home/deploy/my-app" />
+                  </div>
+                )}
               </div>
               <div className="flex gap-sm mt-sm">
                 <button type="submit" className="btn btn-primary btn-sm">Save</button>
@@ -374,7 +366,9 @@ export default function AppDetail() {
               <div className="config-item">
                 <span className="config-item-label">Source</span>
                 <span className="config-item-value">
-                  {app.repo_url ? `${app.repo_url} (${app.branch || 'main'})` : 'Local / uploaded'}
+                  {app.repo_url
+                    ? `${app.repo_url} (${app.branch || 'main'})`
+                    : app.work_dir || 'Local / uploaded'}
                 </span>
               </div>
               <div className="config-item">
@@ -396,15 +390,16 @@ export default function AppDetail() {
           <h2>Environment Variables</h2>
           <form onSubmit={saveEnvs}>
             {envs.map((env, i) => {
-              const visible = shownEnvValues.has(i);                                                                                                
-              return (                                            
-              <div key={i} className="env-row">                                                                                                   
-                <input placeholder="KEY" value={env.key} onChange={e => updateEnv(i, 'key', e.target.value)} />
-                <input placeholder="value" type={visible ? 'text' : 'password'} autoComplete="new-password" value={env.value} onChange={e => updateEnv(i, 'value', e.target.value)} />                                                                                                                                
-                <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => toggleEnvVisibility(i)} title={visible ? 'Hide value' : 'Show value'} >  {visible ? <EyeOffIcon /> : <EyeIcon />}  </button>                                     
-                                                                                                                                                                                                                                           
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEnvRow(i)} style={{ flexShrink: 0 }}>Remove</button>
-              </div>                                                                                                                              
+              const visible = shownEnvValues.has(i);
+              return (
+                <div key={i} className="env-row">
+                  <input placeholder="KEY" aria-label="Variable name" value={env.key} onChange={e => updateEnv(i, 'key', e.target.value)} />
+                  <input placeholder="value" aria-label="Variable value" type={visible ? 'text' : 'password'} autoComplete="new-password" value={env.value} onChange={e => updateEnv(i, 'value', e.target.value)} />
+                  <button type="button" className="btn btn-ghost btn-sm btn-icon" onClick={() => toggleEnvVisibility(i)} aria-label={visible ? 'Hide value' : 'Show value'} title={visible ? 'Hide value' : 'Show value'}>
+                    {visible ? <EyeOffIcon /> : <EyeIcon />}
+                  </button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEnvRow(i)} style={{ flexShrink: 0 }}>Remove</button>
+                </div>
               );
             })}
             <div className="flex gap-sm mt-sm">
@@ -423,10 +418,11 @@ export default function AppDetail() {
             </div>
           ))}
           <form onSubmit={handleAddDomain} className="flex gap-sm mt-sm">
-            <input placeholder="example.com" value={newDomain} onChange={e => setNewDomain(e.target.value)} style={{ flex: 1 }} />
+            <input placeholder="example.com" aria-label="Domain" value={newDomain} onChange={e => setNewDomain(e.target.value)} style={{ flex: 1 }} />
             <button type="submit" className="btn btn-primary btn-sm">Add domain</button>
           </form>
         </div>
       </div>
     </div>
-  );} 
+  );
+}
