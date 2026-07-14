@@ -109,6 +109,8 @@ export interface Deployment {
   triggered_by: string;
   status: string;
   detail: string;
+  commit_sha: string;
+  commit_msg: string;
   started_at: string;
   finished_at: string | null;
 }

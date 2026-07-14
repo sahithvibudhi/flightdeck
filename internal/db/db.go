@@ -57,6 +57,8 @@ var migrations = []string{
 		started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
 		finished_at  DATETIME
 	)`,
+	`ALTER TABLE deployments ADD COLUMN commit_sha TEXT DEFAULT ''`,
+	`ALTER TABLE deployments ADD COLUMN commit_msg TEXT DEFAULT ''`,
 }
 
 func Open(path string) (*sql.DB, error) {
