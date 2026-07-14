@@ -3,11 +3,28 @@ package api
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"regexp"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/sahithvibudhi/flightdeck/internal/db"
 )
+
+// Keys must be valid shell identifiers: anything else (spaces, '=',
+// leading digits) would corrupt the .env file written at app start.
+var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+func validateEnv(e envEntry) error {
+	if !envKeyRe.MatchString(e.Key) {
+		return fmt.Errorf("invalid variable name %q: use letters, digits, and underscores, and don't start with a digit", e.Key)
+	}
+	if strings.ContainsAny(e.Value, "\n\r") {
+		return fmt.Errorf("value of %q must not contain newlines", e.Key)
+	}
+	return nil
+}
 
 type EnvsHandler struct {
 	database *sql.DB
@@ -53,6 +70,10 @@ func (h *EnvsHandler) Replace(w http.ResponseWriter, r *http.Request) {
 
 	var envs []db.Env
 	for _, e := range entries {
+		if err := validateEnv(e); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
 		envs = append(envs, db.Env{AppID: appID, Key: e.Key, Value: e.Value})
 	}
 

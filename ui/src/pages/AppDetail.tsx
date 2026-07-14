@@ -4,7 +4,7 @@ import {
   getApp, deleteApp, startApp, stopApp, restartApp, pullApp, updateApp,
   getAppLogs, streamAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
   listDeployments, deployApp, getSystemInfo,
-  errMsg,
+  errMsg, findInvalidEnv,
   type App, type EnvVar, type DomainEntry, type Deployment, type SystemInfo,
 } from '../api';
 import { EyeIcon, EyeOffIcon, ExternalLinkIcon } from '../components/Icons';
@@ -204,8 +204,14 @@ export default function AppDetail() {
   async function saveEnvs(e: FormEvent) {
     e.preventDefault();
     setError('');
+    const toSave = envs.filter(e => e.key.trim() !== '');
+    const invalid = findInvalidEnv(toSave);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     try {
-      await replaceEnvs(id!, envs.filter(e => e.key.trim() !== ''));
+      await replaceEnvs(id!, toSave);
       await loadEnvs();
       toast(app?.status === 'running'
         ? 'Environment variables saved — restart to apply'

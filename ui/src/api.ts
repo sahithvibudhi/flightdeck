@@ -170,6 +170,23 @@ export interface EnvVar {
   value: string;
 }
 
+/*
+Mirrors the server-side rule: keys must be valid shell identifiers or
+the .env file written at app start would be corrupt. Returns an error
+message for the first invalid entry, or null.
+*/
+export function findInvalidEnv(envs: EnvVar[]): string | null {
+  for (const e of envs) {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(e.key)) {
+      return `Invalid variable name "${e.key}": use letters, digits, and underscores, and don't start with a digit`;
+    }
+    if (/[\n\r]/.test(e.value)) {
+      return `Value of "${e.key}" must not contain newlines`;
+    }
+  }
+  return null;
+}
+
 export const listEnvs = (appId: string) => request<EnvVar[]>(`/apps/${appId}/envs`);
 export const replaceEnvs = (appId: string, envs: EnvVar[]) =>
   request(`/apps/${appId}/envs`, { method: 'PUT', body: JSON.stringify(envs) });
