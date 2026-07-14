@@ -40,7 +40,8 @@ const (
 var restartBackoff = []time.Duration{time.Second, 5 * time.Second, 15 * time.Second, 30 * time.Second, time.Minute}
 
 type proc struct {
-	cmd       *exec.Cmd
+	cmd       *exec.Cmd // nil for processes adopted after a flightdeck restart
+	pid       int
 	done      chan struct{}
 	startedAt time.Time
 	expected  bool // guarded by Manager.mu; true when the exit was requested
@@ -103,7 +104,7 @@ func (m *Manager) startApp(app *db.App, runBuild bool) error {
 	m.mu.Lock()
 	if _, running := m.procs[app.ID]; running {
 		m.mu.Unlock()
-		signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
+		signalGroup(p.pid, syscall.SIGKILL)
 		return fmt.Errorf("app %s is already running", app.Name)
 	}
 	m.procs[app.ID] = p
@@ -118,7 +119,7 @@ func (m *Manager) startApp(app *db.App, runBuild bool) error {
 		}
 	}
 
-	pid := sql.NullInt64{Int64: int64(p.cmd.Process.Pid), Valid: true}
+	pid := sql.NullInt64{Int64: int64(p.pid), Valid: true}
 	if err := db.UpdateAppStatus(m.database, app.ID, "running", pid); err != nil {
 		return fmt.Errorf("update status: %w", err)
 	}
@@ -189,6 +190,7 @@ func (m *Manager) launch(app *db.App, port int, runBuild bool) (*proc, error) {
 
 	p := &proc{
 		cmd:       cmd,
+		pid:       cmd.Process.Pid,
 		done:      make(chan struct{}),
 		startedAt: time.Now(),
 	}
@@ -222,13 +224,18 @@ func (m *Manager) StopApp(appID string) error {
 }
 
 func stopProc(p *proc) {
-	signalGroup(p.cmd.Process.Pid, syscall.SIGINT)
+	signalGroup(p.pid, syscall.SIGINT)
 
 	select {
 	case <-p.done:
 	case <-time.After(10 * time.Second):
-		signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
-		<-p.done
+		signalGroup(p.pid, syscall.SIGKILL)
+		// Adopted processes are watched by a liveness poller rather than
+		// cmd.Wait, so give it a moment to observe the kill.
+		select {
+		case <-p.done:
+		case <-time.After(2 * adoptedPollInterval):
+		}
 	}
 }
 
@@ -340,23 +347,73 @@ func (m *Manager) IsRunning(appID string) bool {
 	return ok
 }
 
+const adoptedPollInterval = 3 * time.Second
+
 func (m *Manager) RestoreRunning() error {
 	apps, err := db.ListApps(m.database)
 	if err != nil {
 		return err
 	}
 	for _, app := range apps {
-		if app.Status == "running" || app.Status == "restarting" {
-			a := app
-			// Skip the build on restore: a reboot shouldn't re-run every
-			// app's npm install. Builds happen on deploy, pull, and
-			// explicit start/restart.
-			if err := m.startApp(&a, false); err != nil {
-				fmt.Fprintf(os.Stderr, "failed to restore app %s: %v\n", app.Name, err)
-			}
+		if app.Status != "running" && app.Status != "restarting" {
+			continue
+		}
+		a := app
+
+		// App processes survive flightdeck restarts and upgrades. If the
+		// recorded process is still alive, adopt it instead of spawning a
+		// duplicate that would lose the port-bind fight.
+		if a.PID.Valid && pidAlive(int(a.PID.Int64)) {
+			m.adopt(a.ID, int(a.PID.Int64))
+			continue
+		}
+
+		// Skip the build on restore: a reboot shouldn't re-run every
+		// app's npm install. Builds happen on deploy, pull, and
+		// explicit start/restart.
+		if err := m.startApp(&a, false); err != nil {
+			fmt.Fprintf(os.Stderr, "failed to restore app %s: %v\n", app.Name, err)
 		}
 	}
 	return nil
+}
+
+/*
+adopt registers an already-running process (from before a flightdeck
+restart) so stop/restart/metrics keep working. We can't cmd.Wait a
+process we didn't spawn, so a poller watches liveness instead.
+*/
+func (m *Manager) adopt(appID string, pid int) {
+	p := &proc{
+		pid:       pid,
+		done:      make(chan struct{}),
+		startedAt: time.Now(),
+	}
+
+	m.mu.Lock()
+	if _, running := m.procs[appID]; running {
+		m.mu.Unlock()
+		return
+	}
+	m.procs[appID] = p
+	m.mu.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(adoptedPollInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			if !pidAlive(pid) {
+				close(p.done)
+				return
+			}
+		}
+	}()
+
+	go m.watchProcess(appID, p)
+}
+
+func pidAlive(pid int) bool {
+	return syscall.Kill(pid, 0) == nil
 }
 
 /*
