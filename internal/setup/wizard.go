@@ -113,7 +113,7 @@ func checkAndInstallDeps(reader *bufio.Reader) error {
 			return fmt.Errorf("git is required — install it manually and try again")
 		}
 		fmt.Println("  Installing git...")
-		if err := installGit(); err != nil {
+		if _, err := installGit(); err != nil {
 			return fmt.Errorf("failed to install git: %w", err)
 		}
 		fmt.Println("  ✓ git installed")
@@ -127,9 +127,11 @@ func checkAndInstallDeps(reader *bufio.Reader) error {
 			return fmt.Errorf("caddy is required — install it manually and try again")
 		}
 		fmt.Println("  Installing caddy...")
-		if err := installCaddy(); err != nil {
+		msg, err := installCaddy()
+		if err != nil {
 			return fmt.Errorf("failed to install caddy: %w", err)
 		}
+		fmt.Printf("  ✓ %s\n", msg)
 	}
 
 	return nil

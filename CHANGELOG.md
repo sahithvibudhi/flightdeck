@@ -17,6 +17,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - CI and release automation; installable binaries published to GitHub Releases with checksums.
 - MIT LICENSE file, CONTRIBUTING, SECURITY policy, issue/PR templates.
 
+- Caddy and git can now be installed from the Settings page (and via `POST /api/system/install`); installing Caddy starts the proxy and registers all domain routes immediately, no restart needed. The installer also sets both up automatically.
+- Caddy downloads fall back to GitHub releases when the official build service is unavailable.
+- The dashboard shows a warning banner when Caddy isn't running (domains/SSL disabled).
+- App URLs everywhere: app cards and the app detail page link to the app (domain, or server IP + port), the deploy success screen shows "your app is live at …", and the domains empty state shows the exact A record to create.
+- `GET /api/system` now includes `server_ip`.
+
 ### Fixed
 - `install.sh` pointed at a nonexistent release URL; it now uses the correct `releases/latest/download` form, verifies checksums, and starts the service automatically.
 - Editing an app's port now updates Caddy routes and restarts the running process; previously domains silently kept pointing at the old port.

@@ -3,11 +3,11 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   getApp, deleteApp, startApp, stopApp, restartApp, pullApp, updateApp,
   getAppLogs, streamAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
-  listDeployments, deployApp,
+  listDeployments, deployApp, getSystemInfo,
   errMsg,
-  type App, type EnvVar, type DomainEntry, type Deployment,
+  type App, type EnvVar, type DomainEntry, type Deployment, type SystemInfo,
 } from '../api';
-import { EyeIcon, EyeOffIcon } from '../components/Icons';
+import { EyeIcon, EyeOffIcon, ExternalLinkIcon } from '../components/Icons';
 import { toast } from '../components/toastBus';
 import ConfirmDialog from '../components/ConfirmDialog';
 
@@ -43,6 +43,11 @@ export default function AppDetail() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [copied, setCopied] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [system, setSystem] = useState<SystemInfo | null>(null);
+
+  useEffect(() => {
+    getSystemInfo().then(setSystem).catch(() => { /* transient */ });
+  }, []);
 
   const loadApp = useCallback(async () => {
     try { setApp(await getApp(id!)); } catch { /* transient */ }
@@ -309,6 +314,17 @@ export default function AppDetail() {
                 ? <span>{app.branch || 'main'}</span>
                 : <span style={{ opacity: 0.5 }}>manual deploy</span>
               }
+              {app.status === 'running' && (domains.length > 0 || system?.server_ip) && (
+                <a
+                  className="app-url"
+                  href={domains.length > 0 ? `https://${domains[0].domain}` : `http://${system!.server_ip}:${app.port}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {domains.length > 0 ? domains[0].domain : `${system!.server_ip}:${app.port}`}
+                  <ExternalLinkIcon />
+                </a>
+              )}
             </div>
           </div>
           <div className="app-actions">
@@ -535,7 +551,11 @@ export default function AppDetail() {
         <div className="section">
           <h2>Domains</h2>
           {domains.length === 0 && (
-            <p className="list-empty">No domains yet. Point a DNS A record at this server, add the domain, and SSL is automatic.</p>
+            <p className="list-empty">
+              {system?.server_ip
+                ? <>No domains yet. Point an A record at <code>{system.server_ip}</code>, add the domain here, and SSL is automatic.</>
+                : 'No domains yet. Point a DNS A record at this server, add the domain, and SSL is automatic.'}
+            </p>
           )}
           {domains.map(d => (
             <div key={d.id} className="domain-row">

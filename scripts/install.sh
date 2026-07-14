@@ -64,6 +64,33 @@ mv "${TMP_DIR}/flightdeck" /usr/local/bin/flightdeck
 mkdir -p /var/flightdeck/apps
 mkdir -p /var/flightdeck/caddy
 
+# Best-effort dependencies: git (for GitHub deploys) and Caddy (for
+# domains + automatic SSL). Failures are not fatal — both can be
+# installed later from the Settings page.
+if ! command -v git >/dev/null 2>&1; then
+  echo "Installing git..."
+  if command -v apt-get >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y -qq git || echo "  git install failed — install it later from Settings."
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y -q git || echo "  git install failed — install it later from Settings."
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --quiet git || echo "  git install failed — install it later from Settings."
+  else
+    echo "  No supported package manager found — install git later from Settings."
+  fi
+fi
+
+if ! command -v caddy >/dev/null 2>&1; then
+  echo "Installing Caddy (for domains + automatic SSL)..."
+  if curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=${ARCH}" -o /usr/local/bin/caddy; then
+    chmod +x /usr/local/bin/caddy
+    echo "  Installed $(caddy version 2>/dev/null | head -c 40)"
+  else
+    rm -f /usr/local/bin/caddy
+    echo "  Caddy download failed — install it later from Settings."
+  fi
+fi
+
 cat > /etc/systemd/system/flightdeck.service <<EOF
 [Unit]
 Description=flightdeck

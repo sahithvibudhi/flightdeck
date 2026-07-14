@@ -206,6 +206,7 @@ export interface SystemInfo {
   caddy: CaddyStatus;
   os: string;
   arch: string;
+  server_ip: string;
 }
 
 export const getSettings = () => request<Settings>('/settings');

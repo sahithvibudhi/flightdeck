@@ -350,6 +350,59 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 .badge-deploying { color: var(--warning); }
 .badge-deploying::before { background: var(--warning); }
 
+.warning-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 20px;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 13px;
+}
+
+.warning-banner-link {
+  color: var(--warning);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.warning-banner-link:hover { text-decoration: underline; }
+
+.app-card-domain-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.app-url {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.app-url:hover { color: var(--text); text-decoration: underline; }
+
+.deploy-state-url {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 12px 0 4px;
+}
+
+.deploy-state-url a {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
 .toast-host {
   position: fixed;
   bottom: 24px;

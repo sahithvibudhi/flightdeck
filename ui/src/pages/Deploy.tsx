@@ -182,6 +182,14 @@ export default function Deploy() {
                 <span className="deploy-state-status-dot" style={{ background: 'var(--success)' }} />
                 running
               </div>
+              {createdApp && system?.server_ip && (
+                <p className="deploy-state-url">
+                  Your app is live at{' '}
+                  <a href={`http://${system.server_ip}:${createdApp.port}`} target="_blank" rel="noreferrer">
+                    http://{system.server_ip}:{createdApp.port}
+                  </a>
+                </p>
+              )}
               <div className="deploy-state-actions">
                 <Link to="/" className="btn btn-primary" style={{ textDecoration: 'none' }}>Go to dashboard</Link>
                 {createdApp && (

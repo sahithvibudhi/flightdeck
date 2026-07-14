@@ -87,6 +87,15 @@ export default function Apps() {
       </nav>
       <div className="container">
 
+        {system && !system.caddy.running && (
+          <div className="warning-banner fade-in">
+            <span>
+              Caddy isn't running — domains and automatic SSL are disabled.
+            </span>
+            <Link to="/settings" className="warning-banner-link">Install from Settings →</Link>
+          </div>
+        )}
+
         {latest && metrics && (
           <div className="server-overview fade-in">
             <div className="server-stat">
@@ -163,13 +172,34 @@ export default function Apps() {
                   </div>
                 </div>
 
-                {app.domains.length > 0 && (
+                {app.domains.length > 0 ? (
                   <div className="app-card-domains">
                     {app.domains.map(d => (
-                      <span key={d} className="app-card-domain">{d}</span>
+                      <span
+                        key={d}
+                        className="app-card-domain app-card-domain-link"
+                        role="link"
+                        tabIndex={0}
+                        onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(`https://${d}`, '_blank'); }}
+                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.open(`https://${d}`, '_blank'); } }}
+                      >
+                        {d}
+                      </span>
                     ))}
                   </div>
-                )}
+                ) : (app.status === 'running' && system?.server_ip && (
+                  <div className="app-card-domains">
+                    <span
+                      className="app-card-domain app-card-domain-link"
+                      role="link"
+                      tabIndex={0}
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(`http://${system.server_ip}:${app.port}`, '_blank'); }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.open(`http://${system.server_ip}:${app.port}`, '_blank'); } }}
+                    >
+                      {system.server_ip}:{app.port}
+                    </span>
+                  </div>
+                ))}
               </Link>
             ))}
           </div>

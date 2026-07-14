@@ -69,7 +69,7 @@ If you want 280+ one-click services, teams, and multi-server orchestration, use 
 curl -sSL https://raw.githubusercontent.com/sahithvibudhi/flightdeck/main/scripts/install.sh | sudo bash
 ```
 
-The installer downloads the binary for your architecture (amd64/arm64), verifies its checksum, sets up a systemd service, and starts it. Finish setup in the browser at `http://your-server-ip:3000`.
+The installer downloads the binary for your architecture (amd64/arm64), verifies its checksum, installs git and Caddy, sets up a systemd service, and starts it. Finish setup in the browser at `http://your-server-ip:3000`. (Missed dependencies can always be installed later from the Settings page.)
 
 Prefer the terminal? Run `sudo flightdeck` interactively and the setup wizard runs there instead. Automating with cloud-init or Ansible? Set `FLIGHTDECK_ADMIN_USER` and `FLIGHTDECK_ADMIN_PASSWORD` in the service environment and setup is fully headless.
 

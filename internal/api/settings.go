@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/sahithvibudhi/flightdeck/internal/db"
 	"github.com/sahithvibudhi/flightdeck/internal/proxy"
@@ -17,6 +18,14 @@ type SettingsHandler struct {
 
 func NewSettingsHandler(database *sql.DB) *SettingsHandler {
 	return &SettingsHandler{database: database}
+}
+
+// onCaddyInstalled is invoked after Caddy is installed through the API so
+// main can start the proxy and register routes without a restart.
+var onCaddyInstalled = func() error { return nil }
+
+func SetCaddyInstalledHook(fn func() error) {
+	onCaddyInstalled = fn
 }
 
 type settingsResponse struct {
@@ -134,6 +143,16 @@ func (h *SettingsHandler) InstallRuntime(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+
+	if strings.EqualFold(req.Name, "caddy") {
+		if err := onCaddyInstalled(); err != nil {
+			writeJSON(w, http.StatusOK, map[string]string{
+				"message": "caddy installed, but starting it failed: " + err.Error(),
+				"output":  output,
+			})
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": req.Name + " installed", "output": output})

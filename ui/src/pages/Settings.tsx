@@ -126,8 +126,18 @@ export default function Settings() {
                     <span className="runtime-card-name">Caddy</span>
                   </div>
                   <span className="runtime-card-version">
-                    {system.caddy.running ? (system.caddy.version || 'running') : 'Not running'}
+                    {system.caddy.running ? (system.caddy.version || 'running') : 'Not running — domains and SSL disabled'}
                   </span>
+                  {!system.caddy.running && (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleInstall('caddy')}
+                      disabled={installing !== null}
+                      style={{ width: '100%', marginTop: 8 }}
+                    >
+                      {installing === 'caddy' ? <><span className="spinner" /> Installing...</> : 'Install & start'}
+                    </button>
+                  )}
                 </div>
                 {system.runtimes.map(r => (
                   <div key={r.name} className={`runtime-card ${r.installed ? '' : 'runtime-card-installable'}`}>
@@ -138,7 +148,7 @@ export default function Settings() {
                     <span className="runtime-card-version">
                       {r.installed ? r.version : 'Not installed'}
                     </span>
-                    {!r.installed && r.name !== 'Git' && (
+                    {!r.installed && (
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={() => handleInstall(r.name)}

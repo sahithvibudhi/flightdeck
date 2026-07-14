@@ -59,19 +59,8 @@ func main() {
 		}
 	}
 
-	cfg, err := db.GetConfig(database)
-	if err != nil {
-		cfg = nil
-	}
-
-	caddy := proxy.NewCaddy(dataDir)
-	if err := caddy.Start(); err != nil {
-		log.Printf("warning: failed to start caddy: %v", err)
-		log.Println("continuing without reverse proxy (domains won't work)")
-	} else {
-		defer caddy.Stop()
-
-		if cfg != nil && cfg.PanelDomain.Valid {
+	registerRoutes := func() {
+		if cfg, err := db.GetConfig(database); err == nil && cfg.PanelDomain.Valid {
 			if err := proxy.AddRoute("flightdeck-panel", cfg.PanelDomain.String, 3000); err != nil {
 				log.Printf("warning: failed to register panel domain: %v", err)
 			}
@@ -80,18 +69,37 @@ func main() {
 		domains, err := db.ListAllDomains(database)
 		if err != nil {
 			log.Printf("warning: failed to list domains: %v", err)
-		} else {
-			for _, d := range domains {
-				app, err := db.GetApp(database, d.AppID)
-				if err != nil {
-					continue
-				}
-				if err := proxy.AddRoute(d.ID, d.Domain, app.EffectivePort()); err != nil {
-					log.Printf("warning: failed to register domain %s: %v", d.Domain, err)
-				}
+			return
+		}
+		for _, d := range domains {
+			app, err := db.GetApp(database, d.AppID)
+			if err != nil {
+				continue
+			}
+			if err := proxy.AddRoute(d.ID, d.Domain, app.EffectivePort()); err != nil {
+				log.Printf("warning: failed to register domain %s: %v", d.Domain, err)
 			}
 		}
 	}
+
+	caddy := proxy.NewCaddy(dataDir)
+	if err := caddy.Start(); err != nil {
+		log.Printf("warning: failed to start caddy: %v", err)
+		log.Println("continuing without reverse proxy (domains won't work) — install Caddy from Settings")
+	} else {
+		defer caddy.Stop()
+		registerRoutes()
+	}
+
+	// Installing Caddy from the Settings page starts the proxy and
+	// registers all routes immediately, no restart needed.
+	api.SetCaddyInstalledHook(func() error {
+		if err := caddy.Start(); err != nil {
+			return err
+		}
+		registerRoutes()
+		return nil
+	})
 
 	if err := system.InitMetricsTable(database); err != nil {
 		log.Fatalf("failed to init metrics table: %v", err)

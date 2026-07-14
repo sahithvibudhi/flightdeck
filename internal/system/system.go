@@ -1,6 +1,7 @@
 package system
 
 import (
+	"net"
 	"net/http"
 	"os/exec"
 	"runtime"
@@ -24,6 +25,7 @@ type Info struct {
 	Caddy    CaddyStatus `json:"caddy"`
 	OS       string      `json:"os"`
 	Arch     string      `json:"arch"`
+	ServerIP string      `json:"server_ip"`
 }
 
 var checks = []struct {
@@ -86,8 +88,35 @@ func Detect() Info {
 	}
 
 	info.Caddy = checkCaddy()
+	info.ServerIP = serverIP()
 
 	return info
+}
+
+/*
+serverIP returns the machine's primary outbound IP so the UI can show
+real app URLs and DNS instructions. The UDP "connection" never sends a
+packet — it just resolves which local address routing would pick.
+*/
+func serverIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		defer conn.Close()
+		if addr, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+			return addr.IP.String()
+		}
+	}
+
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		if ipn, ok := a.(*net.IPNet); ok && !ipn.IP.IsLoopback() && ipn.IP.To4() != nil {
+			return ipn.IP.String()
+		}
+	}
+	return ""
 }
 
 func checkCaddy() CaddyStatus {
