@@ -1,35 +1,35 @@
 # Changelog
 
-All notable changes to flightdeck are documented here.
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [0.1.0] - 2026-07-14
 
-## [Unreleased]
+First versioned release.
 
 ### Added
-- Browser-based first-run setup at `/setup` — the systemd service now works out of the box with no terminal wizard required. Headless provisioning is supported via `FLIGHTDECK_ADMIN_USER` / `FLIGHTDECK_ADMIN_PASSWORD`.
-- Push-to-deploy webhooks: per-app webhook URL (`POST /hooks/{id}`) with HMAC signature verification, GitHub-compatible. Pushing to your repo pulls, rebuilds, and restarts the app.
-- Deployment history per app with trigger, status, and duration.
-- Live log streaming over SSE (`GET /api/apps/{id}/logs/stream`) — the dashboard now tails logs in real time instead of polling.
-- Crash auto-restart with exponential backoff; apps that keep failing are marked `crashed`.
-- Optional health checks with zero-downtime restarts: new process starts on a standby port, traffic switches only after the health check passes.
-- "Server Path" deploy source now actually works: apps can run from an existing directory on the server (`work_dir`).
+- Browser-based first-run setup at `/setup`. Works under systemd with no terminal. Headless setup via `FLIGHTDECK_ADMIN_USER` and `FLIGHTDECK_ADMIN_PASSWORD`.
+- Push-to-deploy webhooks per app (`POST /hooks/{id}`), GitHub signature compatible.
+- Deployment history with trigger, status, and commit info.
+- Live log streaming over SSE. Log files capped at 5MB.
+- Crash auto-restart with backoff. Repeated failures mark the app crashed.
+- Zero-downtime deploys for apps with a health check path.
+- Process adoption: flightdeck restarts and upgrades do not touch running apps.
+- Deploys from a server path (`work_dir`).
+- Caddy and git installable from Settings. Installing Caddy starts the proxy and registers routes without a restart.
+- Caddy download falls back to GitHub releases.
+- One-click sample app on the empty dashboard.
+- App URLs on cards, detail page, and the deploy success screen. Server IP in `/api/system`.
+- Warning banner when Caddy is not running.
 - Login rate limiting.
-- CI and release automation; installable binaries published to GitHub Releases with checksums.
-- MIT LICENSE file, CONTRIBUTING, SECURITY policy, issue/PR templates.
-
-- Caddy and git can now be installed from the Settings page (and via `POST /api/system/install`); installing Caddy starts the proxy and registers all domain routes immediately, no restart needed. The installer also sets both up automatically.
-- Caddy downloads fall back to GitHub releases when the official build service is unavailable.
-- The dashboard shows a warning banner when Caddy isn't running (domains/SSL disabled).
-- App URLs everywhere: app cards and the app detail page link to the app (domain, or server IP + port), the deploy success screen shows "your app is live at …", and the domains empty state shows the exact A record to create.
-- `GET /api/system` now includes `server_ip`.
+- Env var name validation. Domain validation and normalization.
+- Toasts, confirm dialogs, light theme, status colors, a11y fixes.
+- CI and release automation. Install script with checksum verification.
+- LICENSE, CONTRIBUTING, SECURITY, issue and PR templates.
 
 ### Fixed
-- `install.sh` pointed at a nonexistent release URL; it now uses the correct `releases/latest/download` form, verifies checksums, and starts the service automatically.
-- Editing an app's port now updates Caddy routes and restarts the running process; previously domains silently kept pointing at the old port.
-- Start commands run through a shell, so quoting, pipes, and `&&` work (matching build commands).
-- Rebooting the server no longer re-runs every app's build command.
-- The "Replace" button for the GitHub token in Settings now works.
-- Git tokens are no longer embedded in clone URLs (they leaked into `ps` output and error messages); credentials are passed via environment instead.
-- Deleting an app that was just stopped no longer fails with a database-busy error (SQLite busy_timeout).
-- Restarting or upgrading flightdeck no longer duplicates app processes: running apps are re-adopted by PID on boot and keep serving without interruption.
-- Deleting an app now removes its managed directory and logs (a user-provided `work_dir` is never touched).
+- Install script pointed at a broken release URL.
+- Port edits now update Caddy routes and restart the process.
+- Start commands run through a shell in their own process group.
+- Reboots no longer re-run build commands.
+- Settings token replace button.
+- Git tokens no longer leak into process lists or error output.
+- Deploys for the same app no longer run concurrently.
+- Delete while running no longer fails on a busy database.
