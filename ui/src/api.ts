@@ -119,6 +119,8 @@ export const listDeployments = (id: string) =>
 export const deployApp = (id: string) =>
   request<{ deployment_id: string }>(`/apps/${id}/deploy`, { method: 'POST' });
 
+export const createSampleApp = () => request<App>('/apps/sample', { method: 'POST' });
+
 export const createApp = (data: {
   name: string;
   start_command: string;

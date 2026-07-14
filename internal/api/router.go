@@ -37,6 +37,7 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string) *chi.Mux {
 
 			r.Get("/apps", appsHandler.List)
 			r.Post("/apps", appsHandler.Create)
+			r.Post("/apps/sample", appsHandler.CreateSample)
 			r.Get("/apps/{id}", appsHandler.Get)
 			r.Put("/apps/{id}", appsHandler.Update)
 			r.Delete("/apps/{id}", appsHandler.Delete)
