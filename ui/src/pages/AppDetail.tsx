@@ -8,6 +8,8 @@ import {
   type App, type EnvVar, type DomainEntry, type Deployment,
 } from '../api';
 import { EyeIcon, EyeOffIcon } from '../components/Icons';
+import { toast } from '../components/toastBus';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 function formatMemory(mb: number): string {
   if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
@@ -40,6 +42,7 @@ export default function AppDetail() {
   const [shownEnvValues, setShownEnvValues] = useState<Set<number>>(new Set());
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [copied, setCopied] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const loadApp = useCallback(async () => {
     try { setApp(await getApp(id!)); } catch { /* transient */ }
@@ -138,6 +141,7 @@ export default function AppDetail() {
     setError('');
     try {
       await deployApp(id!);
+      toast('Deploy started');
       await loadDeployments();
     } catch (err) {
       setError(errMsg(err));
@@ -157,7 +161,7 @@ export default function AppDetail() {
   }
 
   async function handleDelete() {
-    if (!confirm(`Delete ${app?.name}? This will stop the app and remove all data.`)) return;
+    setConfirmingDelete(false);
     try {
       await deleteApp(id!);
       navigate('/');
@@ -198,6 +202,9 @@ export default function AppDetail() {
     try {
       await replaceEnvs(id!, envs.filter(e => e.key.trim() !== ''));
       await loadEnvs();
+      toast(app?.status === 'running'
+        ? 'Environment variables saved — restart to apply'
+        : 'Environment variables saved');
     } catch (err) {
       setError(errMsg(err));
     }
@@ -211,6 +218,7 @@ export default function AppDetail() {
       await addDomain(id!, newDomain);
       setNewDomain('');
       await loadDomains();
+      toast('Domain added — SSL certificate provisions automatically');
     } catch (err) {
       setError(errMsg(err));
     }
@@ -221,6 +229,7 @@ export default function AppDetail() {
     try {
       await removeDomain(id!, domain);
       await loadDomains();
+      toast('Domain removed');
     } catch (err) {
       setError(errMsg(err));
     }
@@ -255,6 +264,7 @@ export default function AppDetail() {
       });
       setEditing(false);
       await loadApp();
+      toast('Configuration saved');
     } catch (err) {
       setError(errMsg(err));
     }
@@ -344,7 +354,7 @@ export default function AppDetail() {
             >
               {actionLoading === 'restart' ? <span className="spinner" /> : 'Restart'}
             </button>
-            <button className="btn btn-danger btn-sm" onClick={handleDelete}>Delete</button>
+            <button className="btn btn-danger btn-sm" onClick={() => setConfirmingDelete(true)}>Delete</button>
           </div>
         </div>
 
@@ -499,6 +509,9 @@ export default function AppDetail() {
         <div className="section">
           <h2>Environment Variables</h2>
           <form onSubmit={saveEnvs}>
+            {envs.length === 0 && (
+              <p className="list-empty">No environment variables yet. They're injected into the process and written to a .env file on start.</p>
+            )}
             {envs.map((env, i) => {
               const visible = shownEnvValues.has(i);
               return (
@@ -521,6 +534,9 @@ export default function AppDetail() {
 
         <div className="section">
           <h2>Domains</h2>
+          {domains.length === 0 && (
+            <p className="list-empty">No domains yet. Point a DNS A record at this server, add the domain, and SSL is automatic.</p>
+          )}
           {domains.map(d => (
             <div key={d.id} className="domain-row">
               <span>{d.domain}</span>
@@ -533,6 +549,18 @@ export default function AppDetail() {
           </form>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingDelete}
+        title={`Delete ${app.name}?`}
+        message={app.work_dir
+          ? 'This stops the app and removes it from flightdeck. Your directory on the server is left untouched.'
+          : 'This stops the app and removes it from flightdeck, including its app directory and logs.'}
+        confirmLabel="Delete app"
+        danger
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   listApps, clearToken, getSystemInfo, getServerMetrics, getSettings,
   type App, type SystemInfo, type ServerMetricsHistory,
 } from '../api';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 function repoShortName(url: string): string {
   return url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '');
@@ -43,6 +44,7 @@ export default function Apps() {
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [metrics, setMetrics] = useState<ServerMetricsHistory | null>(null);
   const [initial, setInitial] = useState('');
+  const [confirmingLogout, setConfirmingLogout] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -62,7 +64,6 @@ export default function Apps() {
   }, [loadAll]);
 
   function handleLogout() {
-    if (!confirm('Log out?')) return;
     clearToken();
     navigate('/login');
   }
@@ -81,7 +82,7 @@ export default function Apps() {
         </div>
         <div className="nav-right">
           <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>New app</Link>
-          <div className="nav-avatar" onClick={handleLogout} title="Log out">{initial || '?'}</div>
+          <button className="nav-avatar" onClick={() => setConfirmingLogout(true)} title="Log out" aria-label="Log out">{initial || '?'}</button>
         </div>
       </nav>
       <div className="container">
@@ -175,7 +176,12 @@ export default function Apps() {
         ) : (
           <div className="empty-state">
             <p style={{ fontSize: 15, marginBottom: 8 }}>Your server is ready</p>
-            <p>Deploy an app from GitHub, a zip file, or a directory on this server.</p>
+            <p>Three steps from here to a live app:</p>
+            <ol className="getting-started">
+              <li><span className="getting-started-num">1</span> Deploy an app from GitHub, a zip file, or a directory on this server</li>
+              <li><span className="getting-started-num">2</span> Point a DNS record here and add the domain — SSL is automatic</li>
+              <li><span className="getting-started-num">3</span> Paste the app's webhook URL into GitHub for push-to-deploy</li>
+            </ol>
             <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
               Deploy your first app
             </Link>
@@ -185,6 +191,15 @@ export default function Apps() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmingLogout}
+        title="Log out?"
+        message="Your apps keep running — this only signs you out of the dashboard."
+        confirmLabel="Log out"
+        onConfirm={handleLogout}
+        onCancel={() => setConfirmingLogout(false)}
+      />
     </div>
   );
 }

@@ -71,8 +71,10 @@ export default function Deploy() {
     }
   }
 
+  const nameValid = /^[a-z0-9][a-z0-9-]{0,62}$/.test(name);
+
   function canDeploy(): boolean {
-    if (!name || !startCmd) return false;
+    if (!name || !nameValid || !startCmd) return false;
     if (source === 'github' && !repoUrl) return false;
     if (source === 'path' && !workDir) return false;
     if (source === 'upload' && !zipFile) return false;
@@ -177,7 +179,7 @@ export default function Deploy() {
           {phase === 'running' && (
             <>
               <div className="deploy-state-status">
-                <span className="deploy-state-status-dot" style={{ background: '#fff' }} />
+                <span className="deploy-state-status-dot" style={{ background: 'var(--success)' }} />
                 running
               </div>
               <div className="deploy-state-actions">
@@ -249,8 +251,9 @@ export default function Deploy() {
 
         {source === 'path' && (
           <div className="form-group fade-in">
-            <label>Working directory</label>
+            <label htmlFor="deploy-workdir">Working directory</label>
             <input
+              id="deploy-workdir"
               value={workDir}
               onChange={e => setWorkDir(e.target.value)}
               placeholder="/home/deploy/my-app"
@@ -295,8 +298,9 @@ export default function Deploy() {
         {source === 'github' && (
           <div className="fade-in">
             <div className="form-group">
-              <label>Repository URL</label>
+              <label htmlFor="deploy-repo">Repository URL</label>
               <input
+                id="deploy-repo"
                 value={repoUrl}
                 onChange={e => handleRepoUrlChange(e.target.value)}
                 placeholder="https://github.com/user/repo"
@@ -305,8 +309,9 @@ export default function Deploy() {
               <p className="form-hint">Private repos require a <Link to="/settings" style={{ color: 'var(--text-secondary)' }}>token in Settings</Link></p>
             </div>
             <div className="form-group">
-              <label>Branch</label>
+              <label htmlFor="deploy-branch">Branch</label>
               <input
+                id="deploy-branch"
                 value={branch}
                 onChange={e => setBranch(e.target.value)}
                 placeholder="main"
@@ -318,18 +323,22 @@ export default function Deploy() {
         <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
 
         <div className="form-group">
-          <label>App name</label>
+          <label htmlFor="deploy-name">App name</label>
           <input
+            id="deploy-name"
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="my-app"
           />
-          <p className="form-hint">Lowercase, no spaces</p>
+          {name && !nameValid
+            ? <p className="form-hint" style={{ color: 'var(--error)' }}>Lowercase letters, digits, and hyphens only</p>
+            : <p className="form-hint">Lowercase letters, digits, and hyphens</p>}
         </div>
 
         <div className="form-group">
-          <label>Start command</label>
+          <label htmlFor="deploy-start">Start command</label>
           <input
+            id="deploy-start"
             value={startCmd}
             onChange={e => setStartCmd(e.target.value)}
             placeholder="node server.js"
@@ -340,8 +349,9 @@ export default function Deploy() {
         </div>
 
         <div className="form-group">
-          <label>Port <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
+          <label htmlFor="deploy-port">Port <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
           <input
+            id="deploy-port"
             value={appPort}
             onChange={e => setAppPort(e.target.value.replace(/\D/g, ''))}
             placeholder="Auto-assigned if empty (e.g. 3000, 8080)"
@@ -350,8 +360,9 @@ export default function Deploy() {
         </div>
 
         <div className="form-group">
-          <label>Build command <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
+          <label htmlFor="deploy-build">Build command <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
           <input
+            id="deploy-build"
             value={buildCmd}
             onChange={e => setBuildCmd(e.target.value)}
             placeholder="npm install && npm run build"
@@ -360,8 +371,9 @@ export default function Deploy() {
         </div>
 
         <div className="form-group">
-          <label>Health check path <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
+          <label htmlFor="deploy-health">Health check path <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
           <input
+            id="deploy-health"
             value={healthPath}
             onChange={e => setHealthPath(e.target.value)}
             placeholder="/health"

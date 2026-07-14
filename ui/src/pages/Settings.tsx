@@ -6,6 +6,7 @@ import {
   errMsg,
   type Settings as SettingsType, type SystemInfo,
 } from '../api';
+import { toast } from '../components/toastBus';
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsType | null>(null);
@@ -14,7 +15,6 @@ export default function Settings() {
   const [gitToken, setGitToken] = useState('');
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
-  const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
   const [replacingToken, setReplacingToken] = useState(false);
@@ -33,8 +33,7 @@ export default function Settings() {
 
   function flash(message: string) {
     setError('');
-    setMsg(message);
-    setTimeout(() => setMsg(''), 3000);
+    toast(message);
   }
 
   async function handleDomain(e: FormEvent) {
@@ -114,7 +113,6 @@ export default function Settings() {
       <div className="container fade-in">
         <h1>Settings</h1>
 
-        {msg && <p className="success-msg">{msg}</p>}
         {error && <p className="error-msg" style={{ marginBottom: 16 }}>{error}</p>}
 
         <div className="settings-grid">
@@ -198,8 +196,8 @@ export default function Settings() {
             <h2>Control Panel Domain</h2>
             <form onSubmit={handleDomain}>
               <div className="form-group">
-                <label>Domain</label>
-                <input value={domain} onChange={e => setDomain(e.target.value)} placeholder="admin.example.com" />
+                <label htmlFor="panel-domain">Domain</label>
+                <input id="panel-domain" value={domain} onChange={e => setDomain(e.target.value)} placeholder="admin.example.com" />
                 <p className="form-hint">Leave blank for IP-only access on :3000</p>
               </div>
               <button type="submit" className="btn btn-primary btn-sm">Update domain</button>
@@ -210,12 +208,12 @@ export default function Settings() {
             <h2>Change Password</h2>
             <form onSubmit={handlePassword}>
               <div className="form-group">
-                <label>Current password</label>
-                <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} />
+                <label htmlFor="current-pw">Current password</label>
+                <input id="current-pw" type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} />
               </div>
               <div className="form-group">
-                <label>New password</label>
-                <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Minimum 8 characters" />
+                <label htmlFor="new-pw">New password</label>
+                <input id="new-pw" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Minimum 8 characters" />
               </div>
               <button type="submit" className="btn btn-primary btn-sm">Update password</button>
             </form>

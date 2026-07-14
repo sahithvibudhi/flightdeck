@@ -241,6 +241,11 @@ func (h *AppsHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 func (h *AppsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+	app, err := db.GetApp(h.database, id)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
+		return
+	}
 
 	h.pm.StopApp(id)
 
@@ -252,6 +257,14 @@ func (h *AppsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := db.DeleteApp(h.database, id); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to delete app"})
 		return
+	}
+
+	// Clean up the managed app directory and log. A work_dir belongs to
+	// the user and is never touched.
+	if app.WorkDir == "" {
+		os.RemoveAll(filepath.Join(h.dataDir, "apps", app.Name))
+	} else {
+		os.Remove(app.LogPath)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"message": "app deleted"})
