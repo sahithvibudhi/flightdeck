@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
-  listApps, clearToken, getSystemInfo, getServerMetrics, getSettings,
+  listApps, clearToken, getSystemInfo, getServerMetrics, getSettings, createSampleApp, errMsg,
   type App, type SystemInfo, type ServerMetricsHistory,
 } from '../api';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -45,6 +45,8 @@ export default function Apps() {
   const [metrics, setMetrics] = useState<ServerMetricsHistory | null>(null);
   const [initial, setInitial] = useState('');
   const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [sampleLoading, setSampleLoading] = useState(false);
+  const [sampleError, setSampleError] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -66,6 +68,19 @@ export default function Apps() {
   function handleLogout() {
     clearToken();
     navigate('/login');
+  }
+
+  async function handleDeploySample() {
+    setSampleLoading(true);
+    setSampleError('');
+    try {
+      const app = await createSampleApp();
+      navigate(`/apps/${app.id}`);
+    } catch (err) {
+      setSampleError(errMsg(err));
+    } finally {
+      setSampleLoading(false);
+    }
   }
 
   const latest = metrics?.snapshots?.[metrics.snapshots.length - 1];
@@ -215,6 +230,10 @@ export default function Apps() {
             <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
               Deploy your first app
             </Link>
+            <button className="btn btn-secondary btn-sm" style={{ marginTop: 12 }} onClick={handleDeploySample} disabled={sampleLoading}>
+              {sampleLoading ? <span className="spinner" /> : 'Deploy a sample app instead'}
+            </button>
+            {sampleError && <p className="error-msg">{sampleError}</p>}
             <Link to="/settings" className="btn-text" style={{ textDecoration: 'none', marginTop: 12, fontSize: 12 }}>
               or set up runtimes and tokens in Settings
             </Link>
