@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   getApp, deleteApp, startApp, stopApp, restartApp, pullApp, updateApp,
-  getAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
+  getAppLogs, streamAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
+  listDeployments, deployApp,
   errMsg,
-  type App, type EnvVar, type DomainEntry,
+  type App, type EnvVar, type DomainEntry, type Deployment,
 } from '../api';
 import { EyeIcon, EyeOffIcon } from '../components/Icons';
 
@@ -35,7 +36,10 @@ export default function AppDetail() {
   const [editRepoUrl, setEditRepoUrl] = useState('');
   const [editBranch, setEditBranch] = useState('');
   const [editWorkDir, setEditWorkDir] = useState('');
+  const [editHealthPath, setEditHealthPath] = useState('');
   const [shownEnvValues, setShownEnvValues] = useState<Set<number>>(new Set());
+  const [deployments, setDeployments] = useState<Deployment[]>([]);
+  const [copied, setCopied] = useState(false);
 
   const loadApp = useCallback(async () => {
     try { setApp(await getApp(id!)); } catch { /* transient */ }
@@ -56,19 +60,46 @@ export default function AppDetail() {
     try { setDomains(await listDomains(id!)); } catch { /* transient */ }
   }, [id]);
 
+  const loadDeployments = useCallback(async () => {
+    try { setDeployments(await listDeployments(id!)); } catch { /* transient */ }
+  }, [id]);
+
   useEffect(() => {
     if (!id) return;
     loadApp();
-    loadLogs();
     loadEnvs();
     loadDomains();
-    const logInterval = setInterval(loadLogs, 3000);
-    const metricInterval = setInterval(loadApp, 5000);
-    return () => {
-      clearInterval(logInterval);
-      clearInterval(metricInterval);
+    loadDeployments();
+    const metricInterval = setInterval(() => {
+      loadApp();
+      loadDeployments();
+    }, 5000);
+    return () => clearInterval(metricInterval);
+  }, [id, loadApp, loadEnvs, loadDomains, loadDeployments]);
+
+  // Logs stream live over SSE; if the stream can't connect (proxy in the
+  // way, old browser) fall back to 3s polling.
+  useEffect(() => {
+    if (!id) return;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    const source = streamAppLogs(id);
+
+    source.onmessage = e => {
+      setLogs(prev => [...prev.slice(-499), e.data]);
     };
-  }, [id, loadApp, loadLogs, loadEnvs, loadDomains]);
+    source.onerror = () => {
+      source.close();
+      if (!pollInterval) {
+        loadLogs();
+        pollInterval = setInterval(loadLogs, 3000);
+      }
+    };
+
+    return () => {
+      source.close();
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [id, loadLogs]);
 
   useEffect(() => {
     if (logRef.current) {
@@ -100,6 +131,28 @@ export default function AppDetail() {
       setError(errMsg(err));
     } finally {
       setPulling(false);
+    }
+  }
+
+  async function handleDeploy() {
+    setError('');
+    try {
+      await deployApp(id!);
+      await loadDeployments();
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  }
+
+  async function copyWebhookUrl() {
+    if (!app) return;
+    const url = `${window.location.origin}/hooks/${app.id}?secret=${app.webhook_secret}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError('Could not copy — copy the URL manually');
     }
   }
 
@@ -182,6 +235,7 @@ export default function AppDetail() {
     setEditRepoUrl(app.repo_url || '');
     setEditBranch(app.branch || '');
     setEditWorkDir(app.work_dir || '');
+    setEditHealthPath(app.health_path || '');
     setEditing(true);
   }
 
@@ -197,6 +251,7 @@ export default function AppDetail() {
         repo_url: editRepoUrl || undefined,
         branch: editBranch || undefined,
         work_dir: editWorkDir || undefined,
+        health_path: editHealthPath,
       });
       setEditing(false);
       await loadApp();
@@ -248,13 +303,22 @@ export default function AppDetail() {
           </div>
           <div className="app-actions">
             {app.repo_url && (
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handlePull}
-                disabled={pulling}
-              >
-                {pulling ? <><span className="spinner" /> Pulling...</> : 'Pull'}
-              </button>
+              <>
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={handleDeploy}
+                  disabled={!!actionLoading}
+                >
+                  Deploy
+                </button>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handlePull}
+                  disabled={pulling}
+                >
+                  {pulling ? <><span className="spinner" /> Pulling...</> : 'Pull'}
+                </button>
+              </>
             )}
             {app.status !== 'running' ? (
               <button
@@ -345,6 +409,11 @@ export default function AppDetail() {
                     <input id="edit-workdir" value={editWorkDir} onChange={e => setEditWorkDir(e.target.value)} placeholder="/home/deploy/my-app" />
                   </div>
                 )}
+                <div className="form-group" style={{ marginBottom: 12 }}>
+                  <label htmlFor="edit-health">Health check path</label>
+                  <input id="edit-health" value={editHealthPath} onChange={e => setEditHealthPath(e.target.value)} placeholder="/health" />
+                  <p className="form-hint">Enables zero-downtime deploys. Your app must listen on $PORT.</p>
+                </div>
               </div>
               <div className="flex gap-sm mt-sm">
                 <button type="submit" className="btn btn-primary btn-sm">Save</button>
@@ -375,9 +444,50 @@ export default function AppDetail() {
                 <span className="config-item-label">Port</span>
                 <span className="config-item-value">{app.port}</span>
               </div>
+              {app.health_path && (
+                <div className="config-item">
+                  <span className="config-item-label">Health check</span>
+                  <span className="config-item-value">{app.health_path} (zero-downtime deploys on)</span>
+                </div>
+              )}
             </div>
           )}
         </div>
+
+        {app.webhook_secret && (
+          <div className="section">
+            <h2>Push to Deploy</h2>
+            <p className="form-hint" style={{ marginBottom: 8 }}>
+              Add this URL as a webhook in your GitHub repo (Settings → Webhooks) or call it from CI.
+              Each delivery pulls, rebuilds, and restarts the app.
+            </p>
+            <div className="webhook-row">
+              <code className="webhook-url">{window.location.origin}/hooks/{app.id}?secret={'•'.repeat(12)}</code>
+              <button className="btn btn-secondary btn-sm" onClick={copyWebhookUrl}>
+                {copied ? 'Copied' : 'Copy URL'}
+              </button>
+            </div>
+            <p className="form-hint" style={{ marginTop: 8 }}>
+              GitHub webhooks can instead use the secret field with URL <code>{window.location.origin}/hooks/{app.id}</code> (content type: application/json).
+            </p>
+          </div>
+        )}
+
+        {deployments.length > 0 && (
+          <div className="section">
+            <h2>Deployments</h2>
+            {deployments.map(d => (
+              <div key={d.id} className="deployment-row">
+                <span className={`badge badge-${d.status === 'success' ? 'running' : d.status === 'failed' ? 'crashed' : 'deploying'}`}>
+                  {d.status}
+                </span>
+                <span className="deployment-trigger">{d.triggered_by}</span>
+                <span className="deployment-time">{d.started_at}</span>
+                {d.detail && <span className="deployment-detail" title={d.detail}>{d.detail.split('\n')[0]}</span>}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="section">
           <h2>Logs</h2>

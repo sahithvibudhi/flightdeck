@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/sahithvibudhi/flightdeck/internal/auth"
 	"github.com/sahithvibudhi/flightdeck/internal/db"
 	"github.com/sahithvibudhi/flightdeck/internal/git"
 	"github.com/sahithvibudhi/flightdeck/internal/process"
@@ -32,39 +33,43 @@ func NewAppsHandler(database *sql.DB, pm *process.Manager, dataDir string) *Apps
 }
 
 type createAppRequest struct {
-	Name     string `json:"name"`
-	StartCmd string `json:"start_command"`
-	BuildCmd string `json:"build_command"`
-	Port     int    `json:"port"`
-	RepoURL  string `json:"repo_url"`
-	Branch   string `json:"branch"`
-	WorkDir  string `json:"work_dir"`
+	Name       string `json:"name"`
+	StartCmd   string `json:"start_command"`
+	BuildCmd   string `json:"build_command"`
+	Port       int    `json:"port"`
+	RepoURL    string `json:"repo_url"`
+	Branch     string `json:"branch"`
+	WorkDir    string `json:"work_dir"`
+	HealthPath string `json:"health_path"`
 }
 
 type updateAppRequest struct {
-	Name     string `json:"name"`
-	StartCmd string `json:"start_command"`
-	BuildCmd string `json:"build_command"`
-	Port     int    `json:"port"`
-	RepoURL  string `json:"repo_url"`
-	Branch   string `json:"branch"`
-	WorkDir  string `json:"work_dir"`
+	Name       string  `json:"name"`
+	StartCmd   string  `json:"start_command"`
+	BuildCmd   string  `json:"build_command"`
+	Port       int     `json:"port"`
+	RepoURL    string  `json:"repo_url"`
+	Branch     string  `json:"branch"`
+	WorkDir    string  `json:"work_dir"`
+	HealthPath *string `json:"health_path"`
 }
 
 type appResponse struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Port      int      `json:"port"`
-	StartCmd  string   `json:"start_command"`
-	BuildCmd  string   `json:"build_command"`
-	WorkDir   string   `json:"work_dir"`
-	Status    string   `json:"status"`
-	RepoURL   *string  `json:"repo_url"`
-	Branch    *string  `json:"branch"`
-	Domains   []string `json:"domains"`
-	CPU       float64  `json:"cpu_percent"`
-	Memory    float64  `json:"memory_mb"`
-	CreatedAt string   `json:"created_at"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Port          int      `json:"port"`
+	StartCmd      string   `json:"start_command"`
+	BuildCmd      string   `json:"build_command"`
+	WorkDir       string   `json:"work_dir"`
+	WebhookSecret string   `json:"webhook_secret"`
+	HealthPath    string   `json:"health_path"`
+	Status        string   `json:"status"`
+	RepoURL       *string  `json:"repo_url"`
+	Branch        *string  `json:"branch"`
+	Domains       []string `json:"domains"`
+	CPU           float64  `json:"cpu_percent"`
+	Memory        float64  `json:"memory_mb"`
+	CreatedAt     string   `json:"created_at"`
 }
 
 func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
@@ -80,17 +85,19 @@ func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
 	metrics := h.pm.GetAppMetrics(a.ID)
 
 	resp := appResponse{
-		ID:        a.ID,
-		Name:      a.Name,
-		Port:      a.Port,
-		StartCmd:  a.StartCmd,
-		BuildCmd:  a.BuildCmd,
-		WorkDir:   a.WorkDir,
-		Status:    a.Status,
-		Domains:   domainNames,
-		CPU:       metrics.CPU,
-		Memory:    metrics.Memory,
-		CreatedAt: a.CreatedAt,
+		ID:            a.ID,
+		Name:          a.Name,
+		Port:          a.Port,
+		StartCmd:      a.StartCmd,
+		BuildCmd:      a.BuildCmd,
+		WorkDir:       a.WorkDir,
+		WebhookSecret: a.WebhookSecret,
+		HealthPath:    a.HealthPath,
+		Status:        a.Status,
+		Domains:       domainNames,
+		CPU:           metrics.CPU,
+		Memory:        metrics.Memory,
+		CreatedAt:     a.CreatedAt,
 	}
 	if a.RepoURL.Valid {
 		resp.RepoURL = &a.RepoURL.String
@@ -190,6 +197,19 @@ func (h *AppsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "app name already exists or port conflict"})
 		return
+	}
+
+	// Every app gets a webhook secret so push-to-deploy works out of the box.
+	if secret, err := auth.GenerateSecret(); err == nil {
+		if err := db.SetWebhookSecret(h.database, app.ID, secret); err == nil {
+			app.WebhookSecret = secret
+		}
+	}
+
+	if req.HealthPath != "" {
+		if err := db.SetHealthPath(h.database, app.ID, req.HealthPath); err == nil {
+			app.HealthPath = req.HealthPath
+		}
 	}
 
 	writeJSON(w, http.StatusCreated, h.buildAppResponse(app))
@@ -387,6 +407,13 @@ func (h *AppsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := db.UpdateApp(h.database, id, req.Name, req.StartCmd, req.BuildCmd, req.WorkDir, req.Port, logPath, repoURL, branch); err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "update failed: " + err.Error()})
 		return
+	}
+
+	if req.HealthPath != nil {
+		if err := db.SetHealthPath(h.database, id, *req.HealthPath); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save health path"})
+			return
+		}
 	}
 
 	app, _ := db.GetApp(h.database, id)
