@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/sahithvibudhi/flightdeck/internal/auth"
@@ -26,10 +27,23 @@ type AppsHandler struct {
 	database *sql.DB
 	pm       *process.Manager
 	dataDir  string
+
+	// Deploys are serialized per app: concurrent triggers (rapid webhook
+	// pushes) coalesce into one pending re-run instead of racing pulls
+	// and builds in the same directory.
+	deployMu      sync.Mutex
+	deploying     map[string]bool
+	pendingDeploy map[string]string
 }
 
 func NewAppsHandler(database *sql.DB, pm *process.Manager, dataDir string) *AppsHandler {
-	return &AppsHandler{database: database, pm: pm, dataDir: dataDir}
+	return &AppsHandler{
+		database:      database,
+		pm:            pm,
+		dataDir:       dataDir,
+		deploying:     make(map[string]bool),
+		pendingDeploy: make(map[string]string),
+	}
 }
 
 type createAppRequest struct {

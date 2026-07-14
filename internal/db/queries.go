@@ -218,6 +218,8 @@ type Deployment struct {
 	TriggeredBy string
 	Status      string
 	Detail      string
+	CommitSHA   string
+	CommitMsg   string
 	StartedAt   string
 	FinishedAt  sql.NullString
 }
@@ -239,9 +241,14 @@ func FinishDeployment(db *sql.DB, id, status, detail string) error {
 	return err
 }
 
+func SetDeploymentCommit(db *sql.DB, id, sha, msg string) error {
+	_, err := db.Exec(`UPDATE deployments SET commit_sha = ?, commit_msg = ? WHERE id = ?`, sha, msg, id)
+	return err
+}
+
 func ListDeployments(db *sql.DB, appID string, limit int) ([]Deployment, error) {
 	rows, err := db.Query(
-		`SELECT id, app_id, triggered_by, status, detail, started_at, finished_at FROM deployments WHERE app_id = ? ORDER BY started_at DESC LIMIT ?`,
+		`SELECT id, app_id, triggered_by, status, detail, commit_sha, commit_msg, started_at, finished_at FROM deployments WHERE app_id = ? ORDER BY started_at DESC LIMIT ?`,
 		appID, limit,
 	)
 	if err != nil {
@@ -252,7 +259,7 @@ func ListDeployments(db *sql.DB, appID string, limit int) ([]Deployment, error) 
 	var deps []Deployment
 	for rows.Next() {
 		var d Deployment
-		if err := rows.Scan(&d.ID, &d.AppID, &d.TriggeredBy, &d.Status, &d.Detail, &d.StartedAt, &d.FinishedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.AppID, &d.TriggeredBy, &d.Status, &d.Detail, &d.CommitSHA, &d.CommitMsg, &d.StartedAt, &d.FinishedAt); err != nil {
 			return nil, err
 		}
 		deps = append(deps, d)

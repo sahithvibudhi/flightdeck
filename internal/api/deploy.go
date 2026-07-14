@@ -18,6 +18,8 @@ type deploymentResponse struct {
 	TriggeredBy string  `json:"triggered_by"`
 	Status      string  `json:"status"`
 	Detail      string  `json:"detail"`
+	CommitSHA   string  `json:"commit_sha"`
+	CommitMsg   string  `json:"commit_msg"`
 	StartedAt   string  `json:"started_at"`
 	FinishedAt  *string `json:"finished_at"`
 }
@@ -26,31 +28,86 @@ type deploymentResponse struct {
 runDeploy records a deployment and runs the pull → build → restart
 pipeline in the background. Restarts are zero-downtime when the app has
 a health check configured (see Manager.DeployRestart).
+
+Deploys are serialized per app: if one is already running, the request
+is coalesced into a single pending re-run that starts when the current
+one finishes (queued=true, no deployment recorded yet). This prevents
+rapid webhook pushes from racing pulls and builds in the same directory
+while still guaranteeing the newest code ends up deployed.
 */
-func (h *AppsHandler) runDeploy(app *db.App, trigger string) (string, error) {
-	depID, err := db.InsertDeployment(h.database, app.ID, trigger)
+func (h *AppsHandler) runDeploy(app *db.App, trigger string) (depID string, queued bool, err error) {
+	h.deployMu.Lock()
+	if h.deploying[app.ID] {
+		h.pendingDeploy[app.ID] = trigger
+		h.deployMu.Unlock()
+		return "", true, nil
+	}
+	h.deploying[app.ID] = true
+	h.deployMu.Unlock()
+
+	depID, err = db.InsertDeployment(h.database, app.ID, trigger)
 	if err != nil {
-		return "", err
+		h.deployMu.Lock()
+		delete(h.deploying, app.ID)
+		h.deployMu.Unlock()
+		return "", false, err
 	}
 
-	go func() {
-		var detail string
-		if app.RepoURL.Valid {
-			out, err := git.Pull(h.appDir(app), h.gitToken())
-			if err != nil {
-				db.FinishDeployment(h.database, depID, "failed", err.Error())
-				return
-			}
-			detail = out
-		}
-		if err := h.pm.DeployRestart(app); err != nil {
-			db.FinishDeployment(h.database, depID, "failed", strings.TrimSpace(detail+"\n"+err.Error()))
+	go h.executeDeploy(app, depID)
+
+	return depID, false, nil
+}
+
+func (h *AppsHandler) executeDeploy(app *db.App, depID string) {
+	var detail string
+	failed := func(msg string) {
+		db.FinishDeployment(h.database, depID, "failed", msg)
+	}
+
+	if app.RepoURL.Valid {
+		out, err := git.Pull(h.appDir(app), h.gitToken())
+		if err != nil {
+			failed(err.Error())
+			h.finishAndRunPending(app.ID)
 			return
 		}
-		db.FinishDeployment(h.database, depID, "success", detail)
-	}()
+		detail = out
 
-	return depID, nil
+		if sha, msg, err := git.Head(h.appDir(app)); err == nil {
+			db.SetDeploymentCommit(h.database, depID, sha, msg)
+		}
+	}
+
+	if err := h.pm.DeployRestart(app); err != nil {
+		failed(strings.TrimSpace(detail + "\n" + err.Error()))
+		h.finishAndRunPending(app.ID)
+		return
+	}
+
+	db.FinishDeployment(h.database, depID, "success", detail)
+	h.finishAndRunPending(app.ID)
+}
+
+func (h *AppsHandler) finishAndRunPending(appID string) {
+	h.deployMu.Lock()
+	delete(h.deploying, appID)
+	trigger, hasPending := h.pendingDeploy[appID]
+	if hasPending {
+		delete(h.pendingDeploy, appID)
+	}
+	h.deployMu.Unlock()
+
+	if !hasPending {
+		return
+	}
+
+	// Re-fetch: the app may have been reconfigured (or deleted) while
+	// the previous deploy was running.
+	app, err := db.GetApp(h.database, appID)
+	if err != nil {
+		return
+	}
+	h.runDeploy(app, trigger)
 }
 
 func (h *AppsHandler) DeployNow(w http.ResponseWriter, r *http.Request) {
@@ -60,9 +117,13 @@ func (h *AppsHandler) DeployNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	depID, err := h.runDeploy(app, "manual")
+	depID, queued, err := h.runDeploy(app, "manual")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record deployment"})
+		return
+	}
+	if queued {
+		writeJSON(w, http.StatusAccepted, map[string]string{"message": "a deploy is already running — queued another"})
 		return
 	}
 
@@ -89,6 +150,8 @@ func (h *AppsHandler) ListDeployments(w http.ResponseWriter, r *http.Request) {
 			TriggeredBy: d.TriggeredBy,
 			Status:      d.Status,
 			Detail:      d.Detail,
+			CommitSHA:   d.CommitSHA,
+			CommitMsg:   d.CommitMsg,
 			StartedAt:   d.StartedAt,
 		}
 		if d.FinishedAt.Valid {
@@ -129,9 +192,13 @@ func (h *AppsHandler) Webhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	depID, err := h.runDeploy(app, "webhook")
+	depID, queued, err := h.runDeploy(app, "webhook")
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record deployment"})
+		return
+	}
+	if queued {
+		writeJSON(w, http.StatusAccepted, map[string]string{"message": "a deploy is already running — queued another"})
 		return
 	}
 

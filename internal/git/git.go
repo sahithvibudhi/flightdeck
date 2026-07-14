@@ -39,6 +39,25 @@ func Pull(dir, token string) (string, error) {
 	return strings.TrimSpace(redact(string(out), token)), nil
 }
 
+/*
+Head returns the current commit's full SHA and subject line, so deploys
+can record exactly what was shipped.
+*/
+func Head(dir string) (sha, subject string, err error) {
+	cmd := exec.Command("git", "log", "-1", "--format=%H%n%s")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", "", fmt.Errorf("git log failed: %w", err)
+	}
+	lines := strings.SplitN(strings.TrimSpace(string(out)), "\n", 2)
+	sha = lines[0]
+	if len(lines) > 1 {
+		subject = lines[1]
+	}
+	return sha, subject, nil
+}
+
 func gitEnv(token string) []string {
 	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	if token == "" {

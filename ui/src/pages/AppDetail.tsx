@@ -509,6 +509,11 @@ export default function AppDetail() {
                   {d.status}
                 </span>
                 <span className="deployment-trigger">{d.triggered_by}</span>
+                {d.commit_sha && (
+                  <span className="deployment-commit" title={d.commit_sha}>
+                    {d.commit_sha.slice(0, 7)}{d.commit_msg ? ` ${d.commit_msg}` : ''}
+                  </span>
+                )}
                 <span className="deployment-time">{d.started_at}</span>
                 {d.detail && <span className="deployment-detail" title={d.detail}>{d.detail.split('\n')[0]}</span>}
               </div>
