@@ -363,6 +363,18 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   text-align: center;
 }
 
+.setup-intro {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: -24px 0 28px;
+}
+
+.label-optional {
+  color: var(--text-tertiary);
+  font-weight: 400;
+}
+
 .server-overview {
   display: flex;
   gap: 12px;

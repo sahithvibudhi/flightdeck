@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   listApps, clearToken, getSystemInfo, getServerMetrics, getSettings,
@@ -46,28 +46,20 @@ export default function Apps() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  useEffect(() => {
-    loadAll();
-    getSettings().then(s => setInitial(s.admin_username.charAt(0))).catch(() => {});
-    const interval = setInterval(loadAll, 5000);
-    return () => clearInterval(interval);
+  const loadAll = useCallback(async () => {
+    await Promise.all([
+      listApps().then(setApps).catch(() => { /* transient */ }),
+      getSystemInfo().then(setSystem).catch(() => { /* transient */ }),
+      getServerMetrics().then(setMetrics).catch(() => { /* transient */ }),
+    ]);
   }, []);
 
-  async function loadAll() {
-    await Promise.all([loadApps(), loadSystem(), loadMetrics()]);
-  }
-
-  async function loadApps() {
-    try { setApps(await listApps()); } catch {}
-  }
-
-  async function loadSystem() {
-    try { setSystem(await getSystemInfo()); } catch {}
-  }
-
-  async function loadMetrics() {
-    try { setMetrics(await getServerMetrics()); } catch {}
-  }
+  useEffect(() => {
+    loadAll();
+    getSettings().then(s => setInitial(s.admin_username.charAt(0))).catch(() => { /* transient */ });
+    const interval = setInterval(loadAll, 5000);
+    return () => clearInterval(interval);
+  }, [loadAll]);
 
   function handleLogout() {
     if (!confirm('Log out?')) return;

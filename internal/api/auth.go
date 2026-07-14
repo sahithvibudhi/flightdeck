@@ -11,10 +11,11 @@ import (
 
 type AuthHandler struct {
 	database *sql.DB
+	limiter  *loginLimiter
 }
 
 func NewAuthHandler(database *sql.DB) *AuthHandler {
-	return &AuthHandler{database: database}
+	return &AuthHandler{database: database, limiter: newLoginLimiter()}
 }
 
 type loginRequest struct {
@@ -27,6 +28,12 @@ type loginResponse struct {
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	ip := clientIP(r)
+	if !h.limiter.allow(ip) {
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "too many failed attempts, try again later"})
+		return
+	}
+
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -40,9 +47,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Username != cfg.AdminUsername || !auth.CheckPassword(cfg.AdminPassword, req.Password) {
+		h.limiter.recordFailure(ip)
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid credentials"})
 		return
 	}
+
+	h.limiter.reset(ip)
 
 	token, err := auth.IssueToken(req.Username, cfg.JWTSecret)
 	if err != nil {

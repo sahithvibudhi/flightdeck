@@ -1,27 +1,25 @@
 package git
 
 import (
+	"encoding/base64"
 	"fmt"
-	"net/url"
+	"os"
 	"os/exec"
 	"strings"
 )
 
 /*
-Clone fetches a repository into targetDir. When a token is provided,
-it's injected into the HTTPS URL so the clone works against private repos
-without needing SSH keys or credential helpers on the VPS.
+Clone fetches a repository into targetDir. Credentials are passed to git
+through GIT_CONFIG_* environment variables rather than embedded in the URL,
+so the token never appears in the process list, the on-disk remote URL,
+or git's error output.
 */
 func Clone(repoURL, targetDir, branch, token string) error {
-	cloneURL, err := authenticatedURL(repoURL, token)
+	cmd := exec.Command("git", "clone", "--depth", "1", "--branch", branch, repoURL, targetDir)
+	cmd.Env = gitEnv(token)
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return err
-	}
-
-	args := []string{"clone", "--depth", "1", "--branch", branch, cloneURL, targetDir}
-	out, err := exec.Command("git", args...).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git clone failed: %s", strings.TrimSpace(string(out)))
+		return fmt.Errorf("git clone failed: %s", redact(string(out), token))
 	}
 	return nil
 }
@@ -30,26 +28,34 @@ func Clone(repoURL, targetDir, branch, token string) error {
 Pull runs git pull in the given directory and returns
 the output so callers can show what changed.
 */
-func Pull(dir string) (string, error) {
+func Pull(dir, token string) (string, error) {
 	cmd := exec.Command("git", "pull")
 	cmd.Dir = dir
+	cmd.Env = gitEnv(token)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("git pull failed: %s", strings.TrimSpace(string(out)))
+		return "", fmt.Errorf("git pull failed: %s", redact(string(out), token))
 	}
-	return strings.TrimSpace(string(out)), nil
+	return strings.TrimSpace(redact(string(out), token)), nil
 }
 
-func authenticatedURL(repoURL, token string) (string, error) {
+func gitEnv(token string) []string {
+	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	if token == "" {
-		return repoURL, nil
+		return env
 	}
+	basic := base64.StdEncoding.EncodeToString([]byte("x-access-token:" + token))
+	return append(env,
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=http.extraHeader",
+		"GIT_CONFIG_VALUE_0=Authorization: Basic "+basic,
+	)
+}
 
-	u, err := url.Parse(repoURL)
-	if err != nil {
-		return "", fmt.Errorf("invalid repo URL: %w", err)
+func redact(out, token string) string {
+	out = strings.TrimSpace(out)
+	if token == "" {
+		return out
 	}
-
-	u.User = url.UserPassword("x-access-token", token)
-	return u.String(), nil
+	return strings.ReplaceAll(out, token, "***")
 }

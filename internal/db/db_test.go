@@ -29,7 +29,7 @@ func seedConfig(t *testing.T, database *sql.DB) {
 
 func seedApp(t *testing.T, database *sql.DB, name string, port int) *App {
 	t.Helper()
-	app, err := InsertApp(database, name, "node index.js", "", port, "/tmp/"+name+".log", sql.NullString{}, sql.NullString{})
+	app, err := InsertApp(database, name, "node index.js", "", "", port, "/tmp/"+name+".log", sql.NullString{}, sql.NullString{})
 	if err != nil {
 		t.Fatalf("seed app: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestInsertApp(t *testing.T) {
 
 func TestInsertApp_WithRepo(t *testing.T) {
 	db := testDB(t)
-	app, err := InsertApp(db, "gitapp", "npm start", "", 4001, "/tmp/gitapp.log",
+	app, err := InsertApp(db, "gitapp", "npm start", "", "", 4001, "/tmp/gitapp.log",
 		sql.NullString{String: "https://github.com/user/repo", Valid: true},
 		sql.NullString{String: "main", Valid: true},
 	)
@@ -227,7 +227,7 @@ func TestAppNameUnique(t *testing.T) {
 	db := testDB(t)
 	seedApp(t, db, "myapp", 4000)
 
-	_, err := InsertApp(db, "myapp", "cmd", "", 4001, "/tmp/x.log", sql.NullString{}, sql.NullString{})
+	_, err := InsertApp(db, "myapp", "cmd", "", "", 4001, "/tmp/x.log", sql.NullString{}, sql.NullString{})
 	if err == nil {
 		t.Error("expected unique constraint error")
 	}
@@ -237,7 +237,7 @@ func TestPortUnique(t *testing.T) {
 	db := testDB(t)
 	seedApp(t, db, "app1", 4000)
 
-	_, err := InsertApp(db, "app2", "cmd", "", 4000, "/tmp/x.log", sql.NullString{}, sql.NullString{})
+	_, err := InsertApp(db, "app2", "cmd", "", "", 4000, "/tmp/x.log", sql.NullString{}, sql.NullString{})
 	if err == nil {
 		t.Error("expected unique constraint error")
 	}

@@ -1,5 +1,9 @@
 const BASE = '/api';
 
+export function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : 'Something went wrong';
+}
+
 function getToken(): string | null {
   return localStorage.getItem('token');
 }
@@ -42,6 +46,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+export const getSetupStatus = () =>
+  request<{ needs_setup: boolean }>('/setup/status');
+
+export const completeSetup = (username: string, password: string, domain?: string) =>
+  request<{ token: string }>('/setup', {
+    method: 'POST',
+    body: JSON.stringify({ username, password, domain: domain || '' }),
+  });
+
 export const login = (username: string, password: string) =>
   request<{ token: string }>('/auth/login', {
     method: 'POST',
@@ -60,6 +73,7 @@ export interface App {
   port: number;
   start_command: string;
   build_command: string;
+  work_dir: string;
   status: string;
   repo_url: string | null;
   branch: string | null;
@@ -86,6 +100,7 @@ export const createApp = (data: {
   port?: number;
   repo_url?: string;
   branch?: string;
+  work_dir?: string;
 }) => request<App>('/apps', { method: 'POST', body: JSON.stringify(data) });
 
 export const updateApp = (id: string, data: {
@@ -95,6 +110,7 @@ export const updateApp = (id: string, data: {
   port?: number;
   repo_url?: string;
   branch?: string;
+  work_dir?: string;
 }) => request<App>(`/apps/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 
 export async function uploadZip(appId: string, file: File): Promise<{ message: string }> {

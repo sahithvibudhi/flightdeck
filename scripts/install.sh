@@ -1,8 +1,15 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+REPO="sahithvibudhi/flightdeck"
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "This script must be run as root."
+  echo "This script must be run as root (try: sudo bash)."
+  exit 1
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required. Install it first (e.g. apt install curl) and re-run."
   exit 1
 fi
 
@@ -17,12 +24,42 @@ case "$ARCH" in
   *)       echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
-echo "Installing flightdeck..."
+if [ "$OS" != "linux" ]; then
+  echo "flightdeck runs on Linux servers. Detected: $OS"
+  exit 1
+fi
 
-curl -sSL "https://github.com/sahithvibudhi/flightdeck/releases/download/${VERSION}/flightdeck-${OS}-${ARCH}" \
-  -o /tmp/flightdeck
-chmod +x /tmp/flightdeck
-mv /tmp/flightdeck /usr/local/bin/flightdeck
+ASSET="flightdeck-${OS}-${ARCH}"
+if [ "$VERSION" = "latest" ]; then
+  BASE_URL="https://github.com/${REPO}/releases/latest/download"
+else
+  BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
+fi
+
+echo "Installing flightdeck (${VERSION}, ${OS}/${ARCH})..."
+
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+if ! curl -fsSL "${BASE_URL}/${ASSET}" -o "${TMP_DIR}/flightdeck"; then
+  echo ""
+  echo "Download failed: ${BASE_URL}/${ASSET}"
+  echo "No published release may exist yet. You can build from source instead:"
+  echo ""
+  echo "  git clone https://github.com/${REPO}.git && cd flightdeck && make build"
+  echo ""
+  exit 1
+fi
+
+if curl -fsSL "${BASE_URL}/checksums.txt" -o "${TMP_DIR}/checksums.txt" 2>/dev/null; then
+  (cd "$TMP_DIR" && grep " ${ASSET}\$" checksums.txt | sed "s| ${ASSET}| flightdeck|" | sha256sum -c -) \
+    || { echo "Checksum verification failed."; exit 1; }
+else
+  echo "Warning: checksums.txt not found in release; skipping verification."
+fi
+
+chmod +x "${TMP_DIR}/flightdeck"
+mv "${TMP_DIR}/flightdeck" /usr/local/bin/flightdeck
 
 mkdir -p /var/flightdeck/apps
 mkdir -p /var/flightdeck/caddy
@@ -45,12 +82,15 @@ EOF
 
 systemctl daemon-reload
 systemctl enable flightdeck
+systemctl restart flightdeck
+
+IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 
 echo ""
-echo "Installed. Run the setup wizard:"
+echo "flightdeck is installed and running."
 echo ""
-echo "  flightdeck"
+echo "Finish setup in your browser:"
 echo ""
-echo "Then start the service:"
+echo "  http://${IP:-<your-server-ip>}:3000"
 echo ""
-echo "  systemctl start flightdeck"
+echo "(You can also run 'sudo flightdeck' in a terminal for interactive setup.)"

@@ -18,6 +18,7 @@ import (
 	"github.com/sahithvibudhi/flightdeck/internal/proxy"
 	"github.com/sahithvibudhi/flightdeck/internal/setup"
 	"github.com/sahithvibudhi/flightdeck/internal/system"
+	"golang.org/x/term"
 )
 
 const defaultDataDir = "/var/flightdeck"
@@ -40,14 +41,27 @@ func main() {
 	defer database.Close()
 
 	if setup.NeedsSetup(database) {
-		if err := setup.RunWizard(database); err != nil {
+		seeded, err := setup.SeedFromEnv(database)
+		if err != nil {
 			log.Fatalf("setup failed: %v", err)
+		}
+		switch {
+		case seeded:
+			log.Println("admin account created from environment")
+		case term.IsTerminal(int(os.Stdin.Fd())):
+			if err := setup.RunWizard(database); err != nil {
+				log.Fatalf("setup failed: %v", err)
+			}
+		default:
+			// No TTY (e.g. running under systemd): start anyway and let the
+			// user finish setup in the browser at /setup.
+			log.Println("first-run setup pending — open http://<your-server-ip>:3000 to finish setup in the browser")
 		}
 	}
 
 	cfg, err := db.GetConfig(database)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		cfg = nil
 	}
 
 	caddy := proxy.NewCaddy(dataDir)
@@ -57,7 +71,7 @@ func main() {
 	} else {
 		defer caddy.Stop()
 
-		if cfg.PanelDomain.Valid {
+		if cfg != nil && cfg.PanelDomain.Valid {
 			if err := proxy.AddRoute("flightdeck-panel", cfg.PanelDomain.String, 3000); err != nil {
 				log.Printf("warning: failed to register panel domain: %v", err)
 			}
@@ -94,7 +108,7 @@ func main() {
 		log.Fatalf("failed to load embedded UI: %v", err)
 	}
 
-	router := api.NewRouter(database, pm, dataDir, cfg.JWTSecret)
+	router := api.NewRouter(database, pm, dataDir)
 	router.NotFound(api.StaticHandler(uiDist).ServeHTTP)
 
 	addr := ":3000"
