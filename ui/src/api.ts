@@ -74,6 +74,8 @@ export interface App {
   start_command: string;
   build_command: string;
   work_dir: string;
+  webhook_secret: string;
+  health_path: string;
   status: string;
   repo_url: string | null;
   branch: string | null;
@@ -93,6 +95,30 @@ export const pullApp = (id: string) => request<{ output: string }>(`/apps/${id}/
 export const getAppLogs = (id: string, lines = 100) =>
   request<{ lines: string[] }>(`/apps/${id}/logs?lines=${lines}`);
 
+/*
+Live log tail over Server-Sent Events. EventSource can't set headers,
+so the JWT rides along as a query parameter.
+*/
+export function streamAppLogs(id: string): EventSource {
+  const token = getToken() || '';
+  return new EventSource(`${BASE}/apps/${id}/logs/stream?token=${encodeURIComponent(token)}`);
+}
+
+export interface Deployment {
+  id: string;
+  triggered_by: string;
+  status: string;
+  detail: string;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export const listDeployments = (id: string) =>
+  request<Deployment[]>(`/apps/${id}/deployments`);
+
+export const deployApp = (id: string) =>
+  request<{ deployment_id: string }>(`/apps/${id}/deploy`, { method: 'POST' });
+
 export const createApp = (data: {
   name: string;
   start_command: string;
@@ -101,6 +127,7 @@ export const createApp = (data: {
   repo_url?: string;
   branch?: string;
   work_dir?: string;
+  health_path?: string;
 }) => request<App>('/apps', { method: 'POST', body: JSON.stringify(data) });
 
 export const updateApp = (id: string, data: {
@@ -111,6 +138,7 @@ export const updateApp = (id: string, data: {
   repo_url?: string;
   branch?: string;
   work_dir?: string;
+  health_path?: string;
 }) => request<App>(`/apps/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 
 export async function uploadZip(appId: string, file: File): Promise<{ message: string }> {

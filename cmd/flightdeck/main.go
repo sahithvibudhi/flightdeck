@@ -86,7 +86,7 @@ func main() {
 				if err != nil {
 					continue
 				}
-				if err := proxy.AddRoute(d.ID, d.Domain, app.Port); err != nil {
+				if err := proxy.AddRoute(d.ID, d.Domain, app.EffectivePort()); err != nil {
 					log.Printf("warning: failed to register domain %s: %v", d.Domain, err)
 				}
 			}
@@ -99,6 +99,19 @@ func main() {
 	system.StartCollector(database)
 
 	pm := process.NewManager(database, dataDir)
+	pm.SetRouteSwitcher(func(appID string, port int) error {
+		domains, err := db.ListDomains(database, appID)
+		if err != nil {
+			return err
+		}
+		for _, d := range domains {
+			proxy.RemoveRoute(d.ID)
+			if err := proxy.AddRoute(d.ID, d.Domain, port); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err := pm.RestoreRunning(); err != nil {
 		log.Printf("warning: failed to restore apps: %v", err)
 	}

@@ -10,6 +10,10 @@
   --text-tertiary: #444444;
   --error: #ff4444;
   --error-bg: rgba(255, 68, 68, 0.08);
+  --success: #2fbf71;
+  --success-bg: rgba(47, 191, 113, 0.1);
+  --warning: #e6a23c;
+  --warning-bg: rgba(230, 162, 60, 0.1);
   --radius: 6px;
   --radius-lg: 8px;
   --font-mono: 'Geist Mono', 'SF Mono', 'Menlo', monospace;
@@ -307,11 +311,67 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   border-radius: 50%;
 }
 
-.badge-running { color: var(--text); }
-.badge-running::before { background: var(--text); }
+.badge-running { color: var(--success); }
+.badge-running::before { background: var(--success); }
 .badge-stopped::before { background: #333; }
 .badge-error { color: var(--error); }
 .badge-error::before { background: var(--error); }
+.badge-crashed { color: var(--error); }
+.badge-crashed::before { background: var(--error); }
+.badge-restarting { color: var(--warning); }
+.badge-restarting::before { background: var(--warning); }
+.badge-deploying { color: var(--warning); }
+.badge-deploying::before { background: var(--warning); }
+
+.webhook-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.webhook-url {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.deployment-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.deployment-row:last-child { border-bottom: none; }
+
+.deployment-trigger {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.deployment-time {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.deployment-detail {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
 
 .flex { display: flex; }
 .flex-between { display: flex; justify-content: space-between; align-items: center; }

@@ -28,6 +28,7 @@ export default function Deploy() {
   const [startCmd, setStartCmd] = useState('');
   const [buildCmd, setBuildCmd] = useState('');
   const [appPort, setAppPort] = useState('');
+  const [healthPath, setHealthPath] = useState('');
 
   const [envs, setEnvs] = useState<EnvVar[]>([]);
   const [showEnvs, setShowEnvs] = useState(false);
@@ -126,6 +127,9 @@ export default function Deploy() {
       }
       if (source === 'path' && workDir) {
         payload.work_dir = workDir;
+      }
+      if (healthPath) {
+        payload.health_path = healthPath;
       }
 
       const app = await createApp(payload);
@@ -353,6 +357,16 @@ export default function Deploy() {
             placeholder="npm install && npm run build"
           />
           <p className="form-hint">Runs before start command. Chain with &&</p>
+        </div>
+
+        <div className="form-group">
+          <label>Health check path <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
+          <input
+            value={healthPath}
+            onChange={e => setHealthPath(e.target.value)}
+            placeholder="/health"
+          />
+          <p className="form-hint">Enables zero-downtime deploys. Your app must listen on $PORT.</p>
         </div>
 
         <div style={{ marginTop: 24 }}>

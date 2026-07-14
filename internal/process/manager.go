@@ -3,6 +3,7 @@ package process
 import (
 	"database/sql"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,25 +15,60 @@ import (
 	"github.com/sahithvibudhi/flightdeck/internal/db"
 )
 
+const (
+	// standbyOffset is added to an app's port for the temporary process
+	// during zero-downtime restarts. Apps must listen on $PORT for this
+	// to work.
+	standbyOffset = 10000
+
+	// After this many consecutive crashes the app is marked "crashed"
+	// and no further restarts are attempted.
+	maxRestarts = 5
+
+	// A process that stays up this long resets its crash counter.
+	stableUptime = 60 * time.Second
+
+	healthTimeout  = 60 * time.Second
+	healthInterval = 500 * time.Millisecond
+
+	// Log files larger than this are truncated (keeping the tail) on the
+	// next start, so a chatty app can't fill the disk.
+	maxLogSize  = 5 << 20
+	logKeepSize = 512 << 10
+)
+
+var restartBackoff = []time.Duration{time.Second, 5 * time.Second, 15 * time.Second, 30 * time.Second, time.Minute}
+
 type proc struct {
-	cmd     *exec.Cmd
-	done    chan struct{}
-	logFile *os.File
+	cmd       *exec.Cmd
+	done      chan struct{}
+	startedAt time.Time
+	expected  bool // guarded by Manager.mu; true when the exit was requested
 }
 
 type Manager struct {
 	mu       sync.Mutex
 	procs    map[string]*proc
+	restarts map[string]int
 	database *sql.DB
 	dataDir  string
+
+	// switchRoutes re-points an app's domain routes at a new port.
+	// Injected from main so this package stays decoupled from the proxy.
+	switchRoutes func(appID string, port int) error
 }
 
 func NewManager(database *sql.DB, dataDir string) *Manager {
 	return &Manager{
 		procs:    make(map[string]*proc),
+		restarts: make(map[string]int),
 		database: database,
 		dataDir:  dataDir,
 	}
+}
+
+func (m *Manager) SetRouteSwitcher(fn func(appID string, port int) error) {
+	m.switchRoutes = fn
 }
 
 /*
@@ -53,24 +89,66 @@ func (m *Manager) StartApp(app *db.App) error {
 
 func (m *Manager) startApp(app *db.App, runBuild bool) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	if _, running := m.procs[app.ID]; running {
+		m.mu.Unlock()
 		return fmt.Errorf("app %s is already running", app.Name)
 	}
+	m.mu.Unlock()
 
+	p, err := m.launch(app, app.Port, runBuild)
+	if err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	if _, running := m.procs[app.ID]; running {
+		m.mu.Unlock()
+		signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
+		return fmt.Errorf("app %s is already running", app.Name)
+	}
+	m.procs[app.ID] = p
+	m.mu.Unlock()
+
+	// A regular start always runs on the primary port; clear any standby
+	// port left over from a zero-downtime deploy and re-point domains.
+	if app.ActivePort > 0 && app.ActivePort != app.Port {
+		db.SetActivePort(m.database, app.ID, 0)
+		if m.switchRoutes != nil {
+			m.switchRoutes(app.ID, app.Port)
+		}
+	}
+
+	pid := sql.NullInt64{Int64: int64(p.cmd.Process.Pid), Valid: true}
+	if err := db.UpdateAppStatus(m.database, app.ID, "running", pid); err != nil {
+		return fmt.Errorf("update status: %w", err)
+	}
+
+	go m.watchProcess(app.ID, p)
+
+	return nil
+}
+
+/*
+launch builds (optionally) and starts the app process on the given port.
+It does not register the process in the procs map — callers decide how
+the process participates in the app lifecycle. A single goroutine owns
+cmd.Wait and closes done when the process exits.
+*/
+func (m *Manager) launch(app *db.App, port int, runBuild bool) (*proc, error) {
 	appDir := m.AppDir(app)
 	if err := os.MkdirAll(appDir, 0755); err != nil {
-		return fmt.Errorf("create app dir: %w", err)
+		return nil, fmt.Errorf("create app dir: %w", err)
 	}
 
 	if err := m.writeEnvFile(app.ID, appDir); err != nil {
-		return fmt.Errorf("write env file: %w", err)
+		return nil, fmt.Errorf("write env file: %w", err)
 	}
+
+	capLog(app.LogPath)
 
 	logFile, err := os.OpenFile(app.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		return fmt.Errorf("open log file: %w", err)
+		return nil, fmt.Errorf("open log file: %w", err)
 	}
 
 	if runBuild && app.BuildCmd != "" {
@@ -79,18 +157,18 @@ func (m *Manager) startApp(app *db.App, runBuild bool) error {
 		buildCmd.Dir = appDir
 		buildCmd.Stdout = logFile
 		buildCmd.Stderr = logFile
-		buildCmd.Env = m.buildEnv(app.ID, app.Port)
+		buildCmd.Env = m.buildEnv(app.ID, port)
 		if err := buildCmd.Run(); err != nil {
 			fmt.Fprintf(logFile, "=== Build failed: %v ===\n", err)
 			logFile.Close()
-			return fmt.Errorf("build command failed: %w", err)
+			return nil, fmt.Errorf("build command failed: %w", err)
 		}
 		fmt.Fprintf(logFile, "=== Build complete ===\n")
 	}
 
 	if strings.TrimSpace(app.StartCmd) == "" {
 		logFile.Close()
-		return fmt.Errorf("empty start command")
+		return nil, fmt.Errorf("empty start command")
 	}
 
 	// The start command runs through a shell (like the build command) so
@@ -101,40 +179,49 @@ func (m *Manager) startApp(app *db.App, runBuild bool) error {
 	cmd.Dir = appDir
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	cmd.Env = m.buildEnv(app.ID, app.Port)
+	cmd.Env = m.buildEnv(app.ID, port)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
-		return fmt.Errorf("start process: %w", err)
+		return nil, fmt.Errorf("start process: %w", err)
 	}
 
 	p := &proc{
-		cmd:     cmd,
-		done:    make(chan struct{}),
-		logFile: logFile,
-	}
-	m.procs[app.ID] = p
-
-	pid := sql.NullInt64{Int64: int64(cmd.Process.Pid), Valid: true}
-	if err := db.UpdateAppStatus(m.database, app.ID, "running", pid); err != nil {
-		return fmt.Errorf("update status: %w", err)
+		cmd:       cmd,
+		done:      make(chan struct{}),
+		startedAt: time.Now(),
 	}
 
-	go m.watchProcess(app.ID, p)
+	go func() {
+		cmd.Wait()
+		logFile.Close()
+		close(p.done)
+	}()
 
-	return nil
+	return p, nil
 }
 
 func (m *Manager) StopApp(appID string) error {
 	m.mu.Lock()
 	p, running := m.procs[appID]
+	if running {
+		p.expected = true
+	}
 	m.mu.Unlock()
 
 	if !running {
-		return nil
+		// Clear a pending "restarting"/"crashed" state so a stop always
+		// lands the app in a clean stopped state.
+		return db.UpdateAppStatus(m.database, appID, "stopped", sql.NullInt64{})
 	}
 
+	stopProc(p)
+
+	return db.UpdateAppStatus(m.database, appID, "stopped", sql.NullInt64{})
+}
+
+func stopProc(p *proc) {
 	signalGroup(p.cmd.Process.Pid, syscall.SIGINT)
 
 	select {
@@ -143,8 +230,6 @@ func (m *Manager) StopApp(appID string) error {
 		signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
 		<-p.done
 	}
-
-	return db.UpdateAppStatus(m.database, appID, "stopped", sql.NullInt64{})
 }
 
 func (m *Manager) RestartApp(app *db.App) error {
@@ -152,6 +237,100 @@ func (m *Manager) RestartApp(app *db.App) error {
 		return err
 	}
 	return m.StartApp(app)
+}
+
+/*
+DeployRestart restarts an app to pick up new code. When the app has a
+health check configured and is currently running, the restart is
+zero-downtime: the new process starts on a standby port, traffic is
+switched only after the health check passes, and the old process is
+stopped last. Without a health check it falls back to stop+start.
+*/
+func (m *Manager) DeployRestart(app *db.App) error {
+	if app.HealthPath == "" || !m.IsRunning(app.ID) {
+		if m.IsRunning(app.ID) {
+			if err := m.StopApp(app.ID); err != nil {
+				return err
+			}
+		}
+		return m.StartApp(app)
+	}
+	return m.zeroDowntimeRestart(app)
+}
+
+func (m *Manager) zeroDowntimeRestart(app *db.App) error {
+	oldPort := app.EffectivePort()
+	newPort := app.Port
+	if newPort == oldPort {
+		newPort = app.Port + standbyOffset
+	}
+
+	p, err := m.launch(app, newPort, true)
+	if err != nil {
+		return err
+	}
+
+	if err := waitHealthy(newPort, app.HealthPath, p.done); err != nil {
+		signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
+		return fmt.Errorf("new process failed health check, old process still serving: %w", err)
+	}
+
+	// The new process is healthy: switch traffic, then retire the old one.
+	if m.switchRoutes != nil {
+		if err := m.switchRoutes(app.ID, newPort); err != nil {
+			signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
+			return fmt.Errorf("failed to switch routes, old process still serving: %w", err)
+		}
+	}
+
+	activePort := newPort
+	if newPort == app.Port {
+		activePort = 0
+	}
+	db.SetActivePort(m.database, app.ID, activePort)
+
+	m.mu.Lock()
+	old := m.procs[app.ID]
+	if old != nil {
+		old.expected = true
+	}
+	m.procs[app.ID] = p
+	m.mu.Unlock()
+
+	go m.watchProcess(app.ID, p)
+
+	if old != nil {
+		stopProc(old)
+	}
+
+	pid := sql.NullInt64{Int64: int64(p.cmd.Process.Pid), Valid: true}
+	return db.UpdateAppStatus(m.database, app.ID, "running", pid)
+}
+
+func waitHealthy(port int, path string, died <-chan struct{}) error {
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d%s", port, path)
+	client := &http.Client{Timeout: 2 * time.Second}
+	deadline := time.Now().Add(healthTimeout)
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-died:
+			return fmt.Errorf("process exited before becoming healthy")
+		default:
+		}
+		resp, err := client.Get(url)
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode < 400 {
+				return nil
+			}
+		}
+		time.Sleep(healthInterval)
+	}
+	return fmt.Errorf("health check %s did not pass within %s", url, healthTimeout)
 }
 
 func (m *Manager) IsRunning(appID string) bool {
@@ -167,7 +346,7 @@ func (m *Manager) RestoreRunning() error {
 		return err
 	}
 	for _, app := range apps {
-		if app.Status == "running" {
+		if app.Status == "running" || app.Status == "restarting" {
 			a := app
 			// Skip the build on restore: a reboot shouldn't re-run every
 			// app's npm install. Builds happen on deploy, pull, and
@@ -192,21 +371,101 @@ func signalGroup(pid int, sig syscall.Signal) {
 }
 
 /*
-watchProcess waits for the process to exit, then cleans up the
-log file handle and removes the process from the map. The done
-channel signals StopApp that the process has fully exited, avoiding
-the race where both watchProcess and StopApp call cmd.Wait().
+watchProcess reacts to a process exiting. If this proc is still the
+app's current process it is deregistered; an exit that wasn't requested
+(crash) triggers restart-with-backoff, giving up after maxRestarts
+consecutive quick failures.
 */
 func (m *Manager) watchProcess(appID string, p *proc) {
-	p.cmd.Wait()
-	p.logFile.Close()
-	close(p.done)
+	<-p.done
 
 	m.mu.Lock()
-	delete(m.procs, appID)
+	expected := p.expected
+	current := m.procs[appID] == p
+	if current {
+		delete(m.procs, appID)
+	}
 	m.mu.Unlock()
 
-	db.UpdateAppStatus(m.database, appID, "stopped", sql.NullInt64{})
+	if !current {
+		// Superseded by a zero-downtime deploy; the new process owns the app.
+		return
+	}
+
+	if expected {
+		db.UpdateAppStatus(m.database, appID, "stopped", sql.NullInt64{})
+		return
+	}
+
+	m.handleCrash(appID, p)
+}
+
+func (m *Manager) handleCrash(appID string, p *proc) {
+	m.mu.Lock()
+	if time.Since(p.startedAt) > stableUptime {
+		m.restarts[appID] = 0
+	}
+	attempt := m.restarts[appID]
+	m.restarts[appID] = attempt + 1
+	m.mu.Unlock()
+
+	if attempt >= maxRestarts {
+		db.UpdateAppStatus(m.database, appID, "crashed", sql.NullInt64{})
+		m.appendAppLog(appID, fmt.Sprintf("=== Crashed %d times in a row, giving up. Fix the app and press Start. ===", attempt+1))
+		return
+	}
+
+	delay := restartBackoff[attempt]
+	db.UpdateAppStatus(m.database, appID, "restarting", sql.NullInt64{})
+	m.appendAppLog(appID, fmt.Sprintf("=== Process exited unexpectedly, restarting in %s (attempt %d/%d) ===", delay, attempt+1, maxRestarts))
+
+	time.AfterFunc(delay, func() {
+		app, err := db.GetApp(m.database, appID)
+		if err != nil {
+			return // app was deleted
+		}
+		if app.Status != "restarting" {
+			return // user intervened (stopped or started it manually)
+		}
+		if err := m.startApp(app, false); err != nil {
+			db.UpdateAppStatus(m.database, appID, "crashed", sql.NullInt64{})
+		}
+	})
+}
+
+func (m *Manager) appendAppLog(appID, line string) {
+	app, err := db.GetApp(m.database, appID)
+	if err != nil {
+		return
+	}
+	f, err := os.OpenFile(app.LogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintln(f, line)
+}
+
+/*
+capLog keeps log files bounded: once a log passes maxLogSize it is
+rewritten in place keeping only the most recent logKeepSize bytes.
+*/
+func capLog(path string) {
+	info, err := os.Stat(path)
+	if err != nil || info.Size() <= maxLogSize {
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	buf := make([]byte, logKeepSize)
+	n, err := f.ReadAt(buf, info.Size()-logKeepSize)
+	f.Close()
+	if err != nil && n == 0 {
+		return
+	}
+	os.WriteFile(path, buf[:n], 0644)
 }
 
 func (m *Manager) writeEnvFile(appID, appDir string) error {

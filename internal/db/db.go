@@ -45,6 +45,18 @@ var migrations = []string{
 	)`,
 	`ALTER TABLE apps ADD COLUMN build_cmd TEXT DEFAULT ''`,
 	`ALTER TABLE apps ADD COLUMN work_dir TEXT DEFAULT ''`,
+	`ALTER TABLE apps ADD COLUMN webhook_secret TEXT DEFAULT ''`,
+	`ALTER TABLE apps ADD COLUMN health_path TEXT DEFAULT ''`,
+	`ALTER TABLE apps ADD COLUMN active_port INTEGER DEFAULT 0`,
+	`CREATE TABLE IF NOT EXISTS deployments (
+		id           TEXT PRIMARY KEY,
+		app_id       TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+		triggered_by TEXT NOT NULL,
+		status       TEXT NOT NULL DEFAULT 'running',
+		detail       TEXT DEFAULT '',
+		started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+		finished_at  DATETIME
+	)`,
 }
 
 func Open(path string) (*sql.DB, error) {
