@@ -41,6 +41,10 @@ func InstallRuntime(name string) (string, error) {
 		return runInstall([]installOption{
 			{"sh", []string{"sh", "-c", "curl -fsSL https://deno.land/install.sh | sh"}},
 		})
+	case "caddy":
+		return installCaddy()
+	case "git":
+		return installGit()
 	default:
 		return "", fmt.Errorf("unknown runtime: %s", name)
 	}

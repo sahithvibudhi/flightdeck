@@ -19,7 +19,24 @@ func NewCaddy(dataDir string) *Caddy {
 	return &Caddy{dataDir: dataDir}
 }
 
+/*
+IsRunning reports whether a Caddy instance is answering on the admin
+API — ours or one started by a previous flightdeck process.
+*/
+func (c *Caddy) IsRunning() bool {
+	resp, err := http.Get("http://localhost:2019/config/")
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return true
+}
+
 func (c *Caddy) Start() error {
+	if c.IsRunning() {
+		return nil
+	}
+
 	if _, err := exec.LookPath("caddy"); err != nil {
 		return fmt.Errorf("caddy binary not found in PATH")
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/sahithvibudhi/flightdeck/internal/proxy"
 	"github.com/sahithvibudhi/flightdeck/internal/setup"
 	"github.com/sahithvibudhi/flightdeck/internal/system"
+	"golang.org/x/term"
 )
 
 const defaultDataDir = "/var/flightdeck"
@@ -40,24 +41,26 @@ func main() {
 	defer database.Close()
 
 	if setup.NeedsSetup(database) {
-		if err := setup.RunWizard(database); err != nil {
+		seeded, err := setup.SeedFromEnv(database)
+		if err != nil {
 			log.Fatalf("setup failed: %v", err)
+		}
+		switch {
+		case seeded:
+			log.Println("admin account created from environment")
+		case term.IsTerminal(int(os.Stdin.Fd())):
+			if err := setup.RunWizard(database); err != nil {
+				log.Fatalf("setup failed: %v", err)
+			}
+		default:
+			// No TTY (e.g. running under systemd): start anyway and let the
+			// user finish setup in the browser at /setup.
+			log.Println("first-run setup pending — open http://<your-server-ip>:3000 to finish setup in the browser")
 		}
 	}
 
-	cfg, err := db.GetConfig(database)
-	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
-	}
-
-	caddy := proxy.NewCaddy(dataDir)
-	if err := caddy.Start(); err != nil {
-		log.Printf("warning: failed to start caddy: %v", err)
-		log.Println("continuing without reverse proxy (domains won't work)")
-	} else {
-		defer caddy.Stop()
-
-		if cfg.PanelDomain.Valid {
+	registerRoutes := func() {
+		if cfg, err := db.GetConfig(database); err == nil && cfg.PanelDomain.Valid {
 			if err := proxy.AddRoute("flightdeck-panel", cfg.PanelDomain.String, 3000); err != nil {
 				log.Printf("warning: failed to register panel domain: %v", err)
 			}
@@ -66,18 +69,37 @@ func main() {
 		domains, err := db.ListAllDomains(database)
 		if err != nil {
 			log.Printf("warning: failed to list domains: %v", err)
-		} else {
-			for _, d := range domains {
-				app, err := db.GetApp(database, d.AppID)
-				if err != nil {
-					continue
-				}
-				if err := proxy.AddRoute(d.ID, d.Domain, app.Port); err != nil {
-					log.Printf("warning: failed to register domain %s: %v", d.Domain, err)
-				}
+			return
+		}
+		for _, d := range domains {
+			app, err := db.GetApp(database, d.AppID)
+			if err != nil {
+				continue
+			}
+			if err := proxy.AddRoute(d.ID, d.Domain, app.EffectivePort()); err != nil {
+				log.Printf("warning: failed to register domain %s: %v", d.Domain, err)
 			}
 		}
 	}
+
+	caddy := proxy.NewCaddy(dataDir)
+	if err := caddy.Start(); err != nil {
+		log.Printf("warning: failed to start caddy: %v", err)
+		log.Println("continuing without reverse proxy (domains won't work) — install Caddy from Settings")
+	} else {
+		defer caddy.Stop()
+		registerRoutes()
+	}
+
+	// Installing Caddy from the Settings page starts the proxy and
+	// registers all routes immediately, no restart needed.
+	api.SetCaddyInstalledHook(func() error {
+		if err := caddy.Start(); err != nil {
+			return err
+		}
+		registerRoutes()
+		return nil
+	})
 
 	if err := system.InitMetricsTable(database); err != nil {
 		log.Fatalf("failed to init metrics table: %v", err)
@@ -85,6 +107,19 @@ func main() {
 	system.StartCollector(database)
 
 	pm := process.NewManager(database, dataDir)
+	pm.SetRouteSwitcher(func(appID string, port int) error {
+		domains, err := db.ListDomains(database, appID)
+		if err != nil {
+			return err
+		}
+		for _, d := range domains {
+			proxy.RemoveRoute(d.ID)
+			if err := proxy.AddRoute(d.ID, d.Domain, port); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 	if err := pm.RestoreRunning(); err != nil {
 		log.Printf("warning: failed to restore apps: %v", err)
 	}
@@ -94,7 +129,7 @@ func main() {
 		log.Fatalf("failed to load embedded UI: %v", err)
 	}
 
-	router := api.NewRouter(database, pm, dataDir, cfg.JWTSecret)
+	router := api.NewRouter(database, pm, dataDir)
 	router.NotFound(api.StaticHandler(uiDist).ServeHTTP)
 
 	addr := ":3000"

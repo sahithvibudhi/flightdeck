@@ -3,8 +3,10 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   getSettings, updatePanelDomain, changePassword,
   updateGitToken, getSystemInfo, installRuntime,
+  errMsg,
   type Settings as SettingsType, type SystemInfo,
 } from '../api';
+import { toast } from '../components/toastBus';
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsType | null>(null);
@@ -13,9 +15,9 @@ export default function Settings() {
   const [gitToken, setGitToken] = useState('');
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
-  const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
+  const [replacingToken, setReplacingToken] = useState(false);
   const location = useLocation();
 
   useEffect(() => { loadAll(); }, []);
@@ -26,13 +28,12 @@ export default function Settings() {
       setSettings(s);
       setSystem(sys);
       setDomain(s.panel_domain || '');
-    } catch {}
+    } catch { /* transient */ }
   }
 
   function flash(message: string) {
     setError('');
-    setMsg(message);
-    setTimeout(() => setMsg(''), 3000);
+    toast(message);
   }
 
   async function handleDomain(e: FormEvent) {
@@ -41,8 +42,8 @@ export default function Settings() {
     try {
       await updatePanelDomain(domain);
       flash('Domain updated');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -52,10 +53,11 @@ export default function Settings() {
     try {
       await updateGitToken(gitToken);
       setGitToken('');
+      setReplacingToken(false);
       await loadAll();
       flash('Git token updated');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -65,8 +67,8 @@ export default function Settings() {
       await updateGitToken('');
       await loadAll();
       flash('Git token removed');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -77,8 +79,8 @@ export default function Settings() {
       await installRuntime(name);
       flash(`${name} installed successfully`);
       await loadAll();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     } finally {
       setInstalling(null);
     }
@@ -92,8 +94,8 @@ export default function Settings() {
       setCurrentPw('');
       setNewPw('');
       flash('Password updated');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(errMsg(err));
     }
   }
 
@@ -111,7 +113,6 @@ export default function Settings() {
       <div className="container fade-in">
         <h1>Settings</h1>
 
-        {msg && <p className="success-msg">{msg}</p>}
         {error && <p className="error-msg" style={{ marginBottom: 16 }}>{error}</p>}
 
         <div className="settings-grid">
@@ -125,8 +126,18 @@ export default function Settings() {
                     <span className="runtime-card-name">Caddy</span>
                   </div>
                   <span className="runtime-card-version">
-                    {system.caddy.running ? (system.caddy.version || 'running') : 'Not running'}
+                    {system.caddy.running ? (system.caddy.version || 'running') : 'Not running — domains and SSL disabled'}
                   </span>
+                  {!system.caddy.running && (
+                    <button
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleInstall('caddy')}
+                      disabled={installing !== null}
+                      style={{ width: '100%', marginTop: 8 }}
+                    >
+                      {installing === 'caddy' ? <><span className="spinner" /> Installing...</> : 'Install & start'}
+                    </button>
+                  )}
                 </div>
                 {system.runtimes.map(r => (
                   <div key={r.name} className={`runtime-card ${r.installed ? '' : 'runtime-card-installable'}`}>
@@ -137,7 +148,7 @@ export default function Settings() {
                     <span className="runtime-card-version">
                       {r.installed ? r.version : 'Not installed'}
                     </span>
-                    {!r.installed && r.name !== 'Git' && (
+                    {!r.installed && (
                       <button
                         className="btn btn-primary btn-sm"
                         onClick={() => handleInstall(r.name)}
@@ -158,21 +169,22 @@ export default function Settings() {
 
           <div className="card">
             <h2>Git Authentication</h2>
-            {settings?.has_git_token ? (
+            {settings?.has_git_token && !replacingToken ? (
               <div>
                 <div className="token-display">
-                  <span>ghp_••••••••••••••••••••</span>
+                  <span>••••••••••••••••••••</span>
                 </div>
                 <div className="flex gap-sm mt-sm">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setGitToken('')}>Replace</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setGitToken(''); setReplacingToken(true); }}>Replace</button>
                   <button className="btn btn-danger btn-sm" onClick={handleRemoveToken}>Remove token</button>
                 </div>
               </div>
             ) : (
               <form onSubmit={handleGitToken}>
                 <div className="form-group">
-                  <label>Personal access token</label>
+                  <label htmlFor="git-token">Personal access token</label>
                   <input
+                    id="git-token"
                     type="password"
                     value={gitToken}
                     onChange={e => setGitToken(e.target.value)}
@@ -180,7 +192,12 @@ export default function Settings() {
                   />
                   <p className="form-hint">Required for private repositories</p>
                 </div>
-                <button type="submit" className="btn btn-primary btn-sm" disabled={!gitToken}>Save token</button>
+                <div className="flex gap-sm">
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={!gitToken}>Save token</button>
+                  {replacingToken && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReplacingToken(false)}>Cancel</button>
+                  )}
+                </div>
               </form>
             )}
           </div>
@@ -189,8 +206,8 @@ export default function Settings() {
             <h2>Control Panel Domain</h2>
             <form onSubmit={handleDomain}>
               <div className="form-group">
-                <label>Domain</label>
-                <input value={domain} onChange={e => setDomain(e.target.value)} placeholder="admin.example.com" />
+                <label htmlFor="panel-domain">Domain</label>
+                <input id="panel-domain" value={domain} onChange={e => setDomain(e.target.value)} placeholder="admin.example.com" />
                 <p className="form-hint">Leave blank for IP-only access on :3000</p>
               </div>
               <button type="submit" className="btn btn-primary btn-sm">Update domain</button>
@@ -201,12 +218,12 @@ export default function Settings() {
             <h2>Change Password</h2>
             <form onSubmit={handlePassword}>
               <div className="form-group">
-                <label>Current password</label>
-                <input type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} />
+                <label htmlFor="current-pw">Current password</label>
+                <input id="current-pw" type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} />
               </div>
               <div className="form-group">
-                <label>New password</label>
-                <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Minimum 8 characters" />
+                <label htmlFor="new-pw">New password</label>
+                <input id="new-pw" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Minimum 8 characters" />
               </div>
               <button type="submit" className="btn btn-primary btn-sm">Update password</button>
             </form>

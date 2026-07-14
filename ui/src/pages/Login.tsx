@@ -1,6 +1,6 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login, setToken } from '../api';
+import { login, setToken, getSetupStatus, errMsg } from '../api';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -8,6 +8,14 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    getSetupStatus()
+      .then(res => {
+        if (res.needs_setup) navigate('/setup', { replace: true });
+      })
+      .catch(() => {});
+  }, [navigate]);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -17,8 +25,8 @@ export default function Login() {
       const res = await login(username, password);
       setToken(res.token);
       navigate('/');
-    } catch (err: any) {
-      setError(err.message || 'Login failed');
+    } catch (err) {
+      setError(errMsg(err));
     } finally {
       setLoading(false);
     }
@@ -30,8 +38,9 @@ export default function Login() {
         <div className="login-brand">flightdeck</div>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label>Username</label>
+            <label htmlFor="login-username">Username</label>
             <input
+              id="login-username"
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
@@ -40,8 +49,9 @@ export default function Login() {
             />
           </div>
           <div className="form-group">
-            <label>Password</label>
+            <label htmlFor="login-password">Password</label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}

@@ -8,22 +8,30 @@ import (
 	"github.com/sahithvibudhi/flightdeck/internal/proxy"
 )
 
-func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret string) *chi.Mux {
+func NewRouter(database *sql.DB, pm *process.Manager, dataDir string) *chi.Mux {
 	r := chi.NewRouter()
 
 	SetRouteRemover(proxy.RemoveRoute)
+	SetRouteAdder(proxy.AddRoute)
 
 	authHandler := NewAuthHandler(database)
 	appsHandler := NewAppsHandler(database, pm, dataDir)
 	envsHandler := NewEnvsHandler(database)
 	domainsHandler := NewDomainsHandler(database)
 	settingsHandler := NewSettingsHandler(database)
+	setupHandler := NewSetupHandler(database)
+
+	// Push-to-deploy webhooks authenticate with per-app HMAC secrets
+	// instead of JWTs, so they live outside /api.
+	r.Post("/hooks/{id}", appsHandler.Webhook)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/auth/login", authHandler.Login)
+		r.Get("/setup/status", setupHandler.Status)
+		r.Post("/setup", setupHandler.Complete)
 
 		r.Group(func(r chi.Router) {
-			r.Use(AuthMiddleware(jwtSecret))
+			r.Use(DBAuthMiddleware(database))
 
 			r.Post("/auth/password", authHandler.ChangePassword)
 
@@ -37,7 +45,10 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string, jwtSecret 
 			r.Post("/apps/{id}/stop", appsHandler.Stop)
 			r.Post("/apps/{id}/restart", appsHandler.Restart)
 			r.Post("/apps/{id}/pull", appsHandler.Pull)
+			r.Post("/apps/{id}/deploy", appsHandler.DeployNow)
+			r.Get("/apps/{id}/deployments", appsHandler.ListDeployments)
 			r.Get("/apps/{id}/logs", appsHandler.Logs)
+			r.Get("/apps/{id}/logs/stream", appsHandler.LogsStream)
 
 			r.Get("/apps/{id}/envs", envsHandler.List)
 			r.Put("/apps/{id}/envs", envsHandler.Replace)

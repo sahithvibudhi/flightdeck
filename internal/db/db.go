@@ -44,10 +44,26 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`,
 	`ALTER TABLE apps ADD COLUMN build_cmd TEXT DEFAULT ''`,
+	`ALTER TABLE apps ADD COLUMN work_dir TEXT DEFAULT ''`,
+	`ALTER TABLE apps ADD COLUMN webhook_secret TEXT DEFAULT ''`,
+	`ALTER TABLE apps ADD COLUMN health_path TEXT DEFAULT ''`,
+	`ALTER TABLE apps ADD COLUMN active_port INTEGER DEFAULT 0`,
+	`CREATE TABLE IF NOT EXISTS deployments (
+		id           TEXT PRIMARY KEY,
+		app_id       TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+		triggered_by TEXT NOT NULL,
+		status       TEXT NOT NULL DEFAULT 'running',
+		detail       TEXT DEFAULT '',
+		started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+		finished_at  DATETIME
+	)`,
 }
 
 func Open(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)")
+	// busy_timeout makes concurrent writers wait instead of failing with
+	// SQLITE_BUSY — e.g. deleting an app races the process watcher's
+	// status update when the app was just stopped.
+	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
