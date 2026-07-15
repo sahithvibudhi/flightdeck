@@ -212,7 +212,21 @@ export interface Settings {
   panel_domain: string | null;
   admin_username: string;
   has_git_token: boolean;
+  notify_discord: string;
+  notify_telegram_token: string;
+  notify_telegram_chat: string;
+  notify_webhook: string;
 }
+
+export const updateNotifications = (data: {
+  discord: string;
+  telegram_token: string;
+  telegram_chat: string;
+  webhook: string;
+}) => request('/settings/notifications', { method: 'PUT', body: JSON.stringify(data) });
+
+export const testNotifications = () =>
+  request('/settings/notifications/test', { method: 'POST' });
 
 export interface RuntimeInfo {
   name: string;

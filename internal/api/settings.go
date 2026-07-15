@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sahithvibudhi/flightdeck/internal/db"
+	"github.com/sahithvibudhi/flightdeck/internal/notify"
 	"github.com/sahithvibudhi/flightdeck/internal/proxy"
 	"github.com/sahithvibudhi/flightdeck/internal/setup"
 	"github.com/sahithvibudhi/flightdeck/internal/system"
@@ -29,9 +30,13 @@ func SetCaddyInstalledHook(fn func() error) {
 }
 
 type settingsResponse struct {
-	PanelDomain   *string `json:"panel_domain"`
-	AdminUsername string  `json:"admin_username"`
-	HasGitToken   bool    `json:"has_git_token"`
+	PanelDomain         *string `json:"panel_domain"`
+	AdminUsername       string  `json:"admin_username"`
+	HasGitToken         bool    `json:"has_git_token"`
+	NotifyDiscord       string  `json:"notify_discord"`
+	NotifyTelegramToken string  `json:"notify_telegram_token"`
+	NotifyTelegramChat  string  `json:"notify_telegram_chat"`
+	NotifyWebhook       string  `json:"notify_webhook"`
 }
 
 func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -42,14 +47,63 @@ func (h *SettingsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := settingsResponse{
-		AdminUsername: cfg.AdminUsername,
-		HasGitToken:  cfg.GitToken.Valid && cfg.GitToken.String != "",
+		AdminUsername:       cfg.AdminUsername,
+		HasGitToken:         cfg.GitToken.Valid && cfg.GitToken.String != "",
+		NotifyDiscord:       cfg.NotifyDiscord,
+		NotifyTelegramToken: cfg.NotifyTelegramToken,
+		NotifyTelegramChat:  cfg.NotifyTelegramChat,
+		NotifyWebhook:       cfg.NotifyWebhook,
 	}
 	if cfg.PanelDomain.Valid {
 		resp.PanelDomain = &cfg.PanelDomain.String
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+type updateNotificationsRequest struct {
+	Discord       string `json:"discord"`
+	TelegramToken string `json:"telegram_token"`
+	TelegramChat  string `json:"telegram_chat"`
+	Webhook       string `json:"webhook"`
+}
+
+func (h *SettingsHandler) UpdateNotifications(w http.ResponseWriter, r *http.Request) {
+	var req updateNotificationsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	for _, u := range []string{req.Discord, req.Webhook} {
+		if u != "" && !strings.HasPrefix(u, "http://") && !strings.HasPrefix(u, "https://") {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "webhook URLs must start with http:// or https://"})
+			return
+		}
+	}
+
+	if err := db.UpdateNotifications(h.database,
+		strings.TrimSpace(req.Discord),
+		strings.TrimSpace(req.TelegramToken),
+		strings.TrimSpace(req.TelegramChat),
+		strings.TrimSpace(req.Webhook)); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save notification settings"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "notification settings saved"})
+}
+
+func (h *SettingsHandler) TestNotifications(w http.ResponseWriter, r *http.Request) {
+	if !notify.Configured(h.database) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no notification channel configured"})
+		return
+	}
+	if err := notify.Send(h.database, "flightdeck test", "Notifications are working."); err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "test notification sent"})
 }
 
 type updateDomainRequest struct {

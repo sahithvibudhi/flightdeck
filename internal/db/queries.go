@@ -7,22 +7,37 @@ import (
 )
 
 type Config struct {
-	AdminUsername string
-	AdminPassword string
-	JWTSecret     string
-	PanelDomain   sql.NullString
-	GitToken      sql.NullString
+	AdminUsername       string
+	AdminPassword       string
+	JWTSecret           string
+	PanelDomain         sql.NullString
+	GitToken            sql.NullString
+	NotifyDiscord       string
+	NotifyTelegramToken string
+	NotifyTelegramChat  string
+	NotifyWebhook       string
 }
 
 func GetConfig(db *sql.DB) (*Config, error) {
 	var c Config
 	err := db.QueryRow(
-		`SELECT admin_username, admin_password, jwt_secret, panel_domain, git_token FROM config WHERE id = 1`,
-	).Scan(&c.AdminUsername, &c.AdminPassword, &c.JWTSecret, &c.PanelDomain, &c.GitToken)
+		`SELECT admin_username, admin_password, jwt_secret, panel_domain, git_token,
+			notify_discord, notify_telegram_token, notify_telegram_chat, notify_webhook
+		FROM config WHERE id = 1`,
+	).Scan(&c.AdminUsername, &c.AdminPassword, &c.JWTSecret, &c.PanelDomain, &c.GitToken,
+		&c.NotifyDiscord, &c.NotifyTelegramToken, &c.NotifyTelegramChat, &c.NotifyWebhook)
 	if err != nil {
 		return nil, err
 	}
 	return &c, nil
+}
+
+func UpdateNotifications(db *sql.DB, discord, telegramToken, telegramChat, webhook string) error {
+	_, err := db.Exec(
+		`UPDATE config SET notify_discord = ?, notify_telegram_token = ?, notify_telegram_chat = ?, notify_webhook = ? WHERE id = 1`,
+		discord, telegramToken, telegramChat, webhook,
+	)
+	return err
 }
 
 func InsertConfig(db *sql.DB, c *Config) error {
