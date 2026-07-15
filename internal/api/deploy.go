@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/sahithvibudhi/flightdeck/internal/db"
 	"github.com/sahithvibudhi/flightdeck/internal/git"
+	"github.com/sahithvibudhi/flightdeck/internal/notify"
 )
 
 type deploymentResponse struct {
@@ -76,9 +77,18 @@ func (h *AppsHandler) startDeploy(app *db.App, trigger, resetSHA string) (depID 
 }
 
 func (h *AppsHandler) executeDeploy(app *db.App, depID, resetSHA string) {
-	var detail string
+	var detail, commitLine string
+
+	recordCommit := func() {
+		if sha, msg, err := git.Head(h.appDir(app)); err == nil {
+			db.SetDeploymentCommit(h.database, depID, sha, msg)
+			commitLine = sha[:7] + " " + msg
+		}
+	}
+
 	failed := func(msg string) {
 		db.FinishDeployment(h.database, depID, "failed", msg)
+		notify.Go(h.database, "Deploy failed: "+app.Name, strings.TrimSpace(commitLine+"\n"+msg))
 	}
 
 	switch {
@@ -88,9 +98,7 @@ func (h *AppsHandler) executeDeploy(app *db.App, depID, resetSHA string) {
 			h.finishAndRunPending(app.ID)
 			return
 		}
-		if sha, msg, err := git.Head(h.appDir(app)); err == nil {
-			db.SetDeploymentCommit(h.database, depID, sha, msg)
-		}
+		recordCommit()
 	case app.RepoURL.Valid:
 		out, err := git.Pull(h.appDir(app), h.gitToken())
 		if err != nil {
@@ -99,10 +107,7 @@ func (h *AppsHandler) executeDeploy(app *db.App, depID, resetSHA string) {
 			return
 		}
 		detail = out
-
-		if sha, msg, err := git.Head(h.appDir(app)); err == nil {
-			db.SetDeploymentCommit(h.database, depID, sha, msg)
-		}
+		recordCommit()
 	}
 
 	if err := h.pm.DeployRestart(app); err != nil {
@@ -112,6 +117,7 @@ func (h *AppsHandler) executeDeploy(app *db.App, depID, resetSHA string) {
 	}
 
 	db.FinishDeployment(h.database, depID, "success", detail)
+	notify.Go(h.database, "Deploy succeeded: "+app.Name, strings.TrimSpace(commitLine))
 	h.finishAndRunPending(app.ID)
 }
 

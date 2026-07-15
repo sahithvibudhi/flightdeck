@@ -62,6 +62,8 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string) *chi.Mux {
 			r.Get("/settings", settingsHandler.Get)
 			r.Put("/settings/domain", settingsHandler.UpdateDomain)
 			r.Put("/settings/git-token", settingsHandler.UpdateGitToken)
+			r.Put("/settings/notifications", settingsHandler.UpdateNotifications)
+			r.Post("/settings/notifications/test", settingsHandler.TestNotifications)
 			r.Get("/system", settingsHandler.SystemInfo)
 			r.Get("/system/metrics", settingsHandler.ServerMetrics)
 			r.Post("/system/install", settingsHandler.InstallRuntime)
