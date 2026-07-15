@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   getSettings, updatePanelDomain, changePassword,
   updateGitToken, getSystemInfo, installRuntime,
+  updateNotifications, testNotifications,
   errMsg,
   type Settings as SettingsType, type SystemInfo,
 } from '../api';
@@ -18,6 +19,11 @@ export default function Settings() {
   const [error, setError] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
   const [replacingToken, setReplacingToken] = useState(false);
+  const [notifyDiscord, setNotifyDiscord] = useState('');
+  const [notifyTgToken, setNotifyTgToken] = useState('');
+  const [notifyTgChat, setNotifyTgChat] = useState('');
+  const [notifyWebhook, setNotifyWebhook] = useState('');
+  const [testingNotify, setTestingNotify] = useState(false);
   const location = useLocation();
 
   useEffect(() => { loadAll(); }, []);
@@ -28,6 +34,10 @@ export default function Settings() {
       setSettings(s);
       setSystem(sys);
       setDomain(s.panel_domain || '');
+      setNotifyDiscord(s.notify_discord || '');
+      setNotifyTgToken(s.notify_telegram_token || '');
+      setNotifyTgChat(s.notify_telegram_chat || '');
+      setNotifyWebhook(s.notify_webhook || '');
     } catch { /* transient */ }
   }
 
@@ -83,6 +93,35 @@ export default function Settings() {
       setError(errMsg(err));
     } finally {
       setInstalling(null);
+    }
+  }
+
+  async function handleNotifications(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    try {
+      await updateNotifications({
+        discord: notifyDiscord,
+        telegram_token: notifyTgToken,
+        telegram_chat: notifyTgChat,
+        webhook: notifyWebhook,
+      });
+      flash('Notification settings saved');
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  }
+
+  async function handleTestNotifications() {
+    setError('');
+    setTestingNotify(true);
+    try {
+      await testNotifications();
+      flash('Test notification sent');
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setTestingNotify(false);
     }
   }
 
@@ -211,6 +250,38 @@ export default function Settings() {
                 <p className="form-hint">Leave blank for IP-only access on :3000</p>
               </div>
               <button type="submit" className="btn btn-primary btn-sm">Update domain</button>
+            </form>
+          </div>
+
+          <div className="card">
+            <h2>Notifications</h2>
+            <p className="form-hint" style={{ marginBottom: 12 }}>
+              Sent on deploy success, deploy failure, and app crashes. Leave a field blank to disable that channel.
+            </p>
+            <form onSubmit={handleNotifications}>
+              <div className="form-group">
+                <label htmlFor="notify-discord">Discord webhook URL</label>
+                <input id="notify-discord" value={notifyDiscord} onChange={e => setNotifyDiscord(e.target.value)} placeholder="https://discord.com/api/webhooks/..." />
+              </div>
+              <div className="form-group">
+                <label htmlFor="notify-tg-token">Telegram bot token</label>
+                <input id="notify-tg-token" value={notifyTgToken} onChange={e => setNotifyTgToken(e.target.value)} placeholder="123456:ABC..." />
+              </div>
+              <div className="form-group">
+                <label htmlFor="notify-tg-chat">Telegram chat ID</label>
+                <input id="notify-tg-chat" value={notifyTgChat} onChange={e => setNotifyTgChat(e.target.value)} placeholder="-100123456789" />
+              </div>
+              <div className="form-group">
+                <label htmlFor="notify-webhook">Generic webhook URL</label>
+                <input id="notify-webhook" value={notifyWebhook} onChange={e => setNotifyWebhook(e.target.value)} placeholder="https://example.com/hook" />
+                <p className="form-hint">Receives JSON: title, message, timestamp</p>
+              </div>
+              <div className="flex gap-sm">
+                <button type="submit" className="btn btn-primary btn-sm">Save</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={handleTestNotifications} disabled={testingNotify}>
+                  {testingNotify ? <><span className="spinner" /> Sending...</> : 'Send test'}
+                </button>
+              </div>
             </form>
           </div>
 

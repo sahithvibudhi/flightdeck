@@ -59,6 +59,10 @@ var migrations = []string{
 	)`,
 	`ALTER TABLE deployments ADD COLUMN commit_sha TEXT DEFAULT ''`,
 	`ALTER TABLE deployments ADD COLUMN commit_msg TEXT DEFAULT ''`,
+	`ALTER TABLE config ADD COLUMN notify_discord TEXT DEFAULT ''`,
+	`ALTER TABLE config ADD COLUMN notify_telegram_token TEXT DEFAULT ''`,
+	`ALTER TABLE config ADD COLUMN notify_telegram_chat TEXT DEFAULT ''`,
+	`ALTER TABLE config ADD COLUMN notify_webhook TEXT DEFAULT ''`,
 }
 
 func Open(path string) (*sql.DB, error) {
