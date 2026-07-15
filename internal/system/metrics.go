@@ -3,10 +3,12 @@ package system
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -110,6 +112,17 @@ func collect() Snapshot {
 	}
 }
 
+type cpuSample struct {
+	busy  uint64
+	total uint64
+}
+
+var (
+	cpuMu       sync.Mutex
+	cpuPrev     cpuSample
+	cpuHavePrev bool
+)
+
 func getCPU() float64 {
 	if runtime.GOOS == "darwin" {
 		out, err := exec.Command("ps", "-A", "-o", "%cpu").Output()
@@ -128,14 +141,62 @@ func getCPU() float64 {
 		return roundf(total, 1)
 	}
 
-	out, err := exec.Command("sh", "-c",
-		`grep 'cpu ' /proc/stat | awk '{u=$2+$4; t=$2+$4+$5; if(t>0) printf "%.1f", u*100/t; else print "0"}'`,
-	).Output()
+	cur, err := readCPUSample()
 	if err != nil {
 		return 0
 	}
-	v, _ := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	return v
+
+	cpuMu.Lock()
+	defer cpuMu.Unlock()
+	prev, havePrev := cpuPrev, cpuHavePrev
+	cpuPrev, cpuHavePrev = cur, true
+	if !havePrev {
+		return 0
+	}
+	return roundf(cpuPercentBetween(prev, cur), 1)
+}
+
+// readCPUSample parses the aggregate "cpu " line of /proc/stat:
+// user nice system idle iowait irq softirq steal.
+func readCPUSample() (cpuSample, error) {
+	data, err := os.ReadFile("/proc/stat")
+	if err != nil {
+		return cpuSample{}, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "cpu ") {
+			continue
+		}
+		fields := strings.Fields(line)[1:]
+		if len(fields) > 8 {
+			fields = fields[:8]
+		}
+		var total, idle uint64
+		for i, f := range fields {
+			v, _ := strconv.ParseUint(f, 10, 64)
+			total += v
+			if i == 3 || i == 4 { // idle, iowait
+				idle += v
+			}
+		}
+		return cpuSample{busy: total - idle, total: total}, nil
+	}
+	return cpuSample{}, fmt.Errorf("no cpu line in /proc/stat")
+}
+
+func cpuPercentBetween(prev, cur cpuSample) float64 {
+	totalDelta := float64(cur.total) - float64(prev.total)
+	if totalDelta <= 0 {
+		return 0
+	}
+	pct := 100 * (float64(cur.busy) - float64(prev.busy)) / totalDelta
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
 }
 
 func getMemUsed() float64 {
