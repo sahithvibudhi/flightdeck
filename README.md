@@ -91,6 +91,14 @@ Prefer the terminal? Run `sudo flightdeck` interactively and the setup wizard ru
 
 **Requirements:** a Linux VPS (amd64 or arm64), ports 80/443 open for SSL, port 3000 for the dashboard (or put it behind a domain in Settings).
 
+### Uninstall
+
+```bash
+curl -sSL https://raw.githubusercontent.com/sahithvibudhi/flightdeck/main/scripts/uninstall.sh | sudo bash
+```
+
+Your data in `/var/flightdeck` is kept unless you pass `--purge`, and running apps are not stopped.
+
 ## Deploying an app
 
 Navigate to **Deploy**, pick a source tab:
