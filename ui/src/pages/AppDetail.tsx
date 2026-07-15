@@ -3,7 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   getApp, deleteApp, startApp, stopApp, restartApp, pullApp, updateApp,
   getAppLogs, streamAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
-  listDeployments, deployApp, getSystemInfo,
+  listDeployments, deployApp, rollbackDeployment, getSystemInfo,
   errMsg, findInvalidEnv,
   type App, type EnvVar, type DomainEntry, type Deployment, type SystemInfo,
 } from '../api';
@@ -43,6 +43,7 @@ export default function AppDetail() {
   const [deployments, setDeployments] = useState<Deployment[]>([]);
   const [copied, setCopied] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [rollbackTarget, setRollbackTarget] = useState<Deployment | null>(null);
   const [system, setSystem] = useState<SystemInfo | null>(null);
 
   useEffect(() => {
@@ -147,6 +148,20 @@ export default function AppDetail() {
     try {
       await deployApp(id!);
       toast('Deploy started');
+      await loadDeployments();
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  }
+
+  async function handleRollback() {
+    if (!rollbackTarget) return;
+    const target = rollbackTarget;
+    setRollbackTarget(null);
+    setError('');
+    try {
+      await rollbackDeployment(id!, target.id);
+      toast(`Rolling back to ${target.commit_sha.slice(0, 7)}`);
       await loadDeployments();
     } catch (err) {
       setError(errMsg(err));
@@ -522,6 +537,14 @@ export default function AppDetail() {
                 )}
                 <span className="deployment-time">{d.started_at}</span>
                 {d.detail && <span className="deployment-detail" title={d.detail}>{d.detail.split('\n')[0]}</span>}
+                {d.status === 'success' && d.commit_sha && (
+                  <button
+                    className="btn btn-ghost btn-sm deployment-rollback"
+                    onClick={() => setRollbackTarget(d)}
+                  >
+                    Roll back
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -581,6 +604,15 @@ export default function AppDetail() {
           </form>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={rollbackTarget !== null}
+        title={`Roll back to ${rollbackTarget?.commit_sha.slice(0, 7)}?`}
+        message={`The working tree is reset to "${rollbackTarget?.commit_msg || rollbackTarget?.commit_sha.slice(0, 7)}" and the app restarts${app.health_path ? ' with zero downtime' : ''}. The next deploy or pull returns to the branch tip.`}
+        confirmLabel="Roll back"
+        onConfirm={handleRollback}
+        onCancel={() => setRollbackTarget(null)}
+      />
 
       <ConfirmDialog
         open={confirmingDelete}

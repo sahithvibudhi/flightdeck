@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -36,8 +37,24 @@ rapid webhook pushes from racing pulls and builds in the same directory
 while still guaranteeing the newest code ends up deployed.
 */
 func (h *AppsHandler) runDeploy(app *db.App, trigger string) (depID string, queued bool, err error) {
+	return h.startDeploy(app, trigger, "")
+}
+
+var errDeployInProgress = fmt.Errorf("a deploy is already running for this app")
+
+/*
+startDeploy takes the app's deploy slot and runs the pipeline in the
+background. When resetSHA is set the working tree is reset to that
+commit instead of pulled (rollback); rollbacks are not coalesced, they
+fail fast if a deploy is already running.
+*/
+func (h *AppsHandler) startDeploy(app *db.App, trigger, resetSHA string) (depID string, queued bool, err error) {
 	h.deployMu.Lock()
 	if h.deploying[app.ID] {
+		if resetSHA != "" {
+			h.deployMu.Unlock()
+			return "", false, errDeployInProgress
+		}
 		h.pendingDeploy[app.ID] = trigger
 		h.deployMu.Unlock()
 		return "", true, nil
@@ -53,18 +70,28 @@ func (h *AppsHandler) runDeploy(app *db.App, trigger string) (depID string, queu
 		return "", false, err
 	}
 
-	go h.executeDeploy(app, depID)
+	go h.executeDeploy(app, depID, resetSHA)
 
 	return depID, false, nil
 }
 
-func (h *AppsHandler) executeDeploy(app *db.App, depID string) {
+func (h *AppsHandler) executeDeploy(app *db.App, depID, resetSHA string) {
 	var detail string
 	failed := func(msg string) {
 		db.FinishDeployment(h.database, depID, "failed", msg)
 	}
 
-	if app.RepoURL.Valid {
+	switch {
+	case resetSHA != "":
+		if err := git.Reset(h.appDir(app), resetSHA); err != nil {
+			failed(err.Error())
+			h.finishAndRunPending(app.ID)
+			return
+		}
+		if sha, msg, err := git.Head(h.appDir(app)); err == nil {
+			db.SetDeploymentCommit(h.database, depID, sha, msg)
+		}
+	case app.RepoURL.Valid:
 		out, err := git.Pull(h.appDir(app), h.gitToken())
 		if err != nil {
 			failed(err.Error())
@@ -160,6 +187,60 @@ func (h *AppsHandler) ListDeployments(w http.ResponseWriter, r *http.Request) {
 		resp = append(resp, item)
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+/*
+Rollback re-deploys a previous successful deployment by resetting the
+working tree to its recorded commit, then running the normal restart
+pipeline (zero-downtime when the app has a health check). A later pull
+or push-to-deploy fast-forwards back to the branch tip.
+*/
+func (h *AppsHandler) Rollback(w http.ResponseWriter, r *http.Request) {
+	app, err := db.GetApp(h.database, chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
+		return
+	}
+
+	if !app.RepoURL.Valid {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rollback needs a git-backed app"})
+		return
+	}
+
+	depID := chi.URLParam(r, "depID")
+	deps, err := db.ListDeployments(h.database, app.ID, 100)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to load deployments"})
+		return
+	}
+
+	var target *db.Deployment
+	for i := range deps {
+		if deps[i].ID == depID {
+			target = &deps[i]
+			break
+		}
+	}
+	if target == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "deployment not found for this app"})
+		return
+	}
+	if target.CommitSHA == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "that deployment has no recorded commit"})
+		return
+	}
+
+	newDepID, _, err := h.startDeploy(app, "rollback", target.CommitSHA)
+	if err == errDeployInProgress {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to record deployment"})
+		return
+	}
+
+	writeJSON(w, http.StatusAccepted, map[string]string{"deployment_id": newDepID, "message": "rollback started"})
 }
 
 /*
