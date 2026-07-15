@@ -57,21 +57,27 @@ type createAppRequest struct {
 	HealthPath string `json:"health_path"`
 }
 
+// Optional fields are pointers so a partial update can't wipe them:
+// absent means keep the current value, empty string means clear it.
 type updateAppRequest struct {
 	Name       string  `json:"name"`
 	StartCmd   string  `json:"start_command"`
-	BuildCmd   string  `json:"build_command"`
+	BuildCmd   *string `json:"build_command"`
 	Port       int     `json:"port"`
-	RepoURL    string  `json:"repo_url"`
-	Branch     string  `json:"branch"`
+	RepoURL    *string `json:"repo_url"`
+	Branch     *string `json:"branch"`
 	WorkDir    string  `json:"work_dir"`
 	HealthPath *string `json:"health_path"`
 }
 
 type appResponse struct {
-	ID            string   `json:"id"`
-	Name          string   `json:"name"`
-	Port          int      `json:"port"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Port int    `json:"port"`
+	// URLPort is the port the app is actually serving on right now.
+	// After a zero-downtime deploy that can be the standby port rather
+	// than the configured one, so links must use this field.
+	URLPort       int      `json:"url_port"`
 	StartCmd      string   `json:"start_command"`
 	BuildCmd      string   `json:"build_command"`
 	WorkDir       string   `json:"work_dir"`
@@ -102,6 +108,7 @@ func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
 		ID:            a.ID,
 		Name:          a.Name,
 		Port:          a.Port,
+		URLPort:       a.EffectivePort(),
 		StartCmd:      a.StartCmd,
 		BuildCmd:      a.BuildCmd,
 		WorkDir:       a.WorkDir,
@@ -131,7 +138,13 @@ func (h *AppsHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	resp := make([]appResponse, 0, len(apps))
 	for _, a := range apps {
-		resp = append(resp, h.buildAppResponse(&a))
+		ar := h.buildAppResponse(&a)
+		// Webhook secrets grant deploy access, so a read-scoped token
+		// must not see them.
+		if isTokenAuth(r) {
+			ar.WebhookSecret = ""
+		}
+		resp = append(resp, ar)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -250,7 +263,11 @@ func (h *AppsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, h.buildAppResponse(app))
+	resp := h.buildAppResponse(app)
+	if isTokenAuth(r) {
+		resp.WebhookSecret = ""
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *AppsHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -421,17 +438,32 @@ func (h *AppsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		logPath = filepath.Join(newDir, "app.log")
 	}
 
-	var repoURL, branch sql.NullString
-	if req.RepoURL != "" {
-		repoURL = sql.NullString{String: req.RepoURL, Valid: true}
-		b := req.Branch
-		if b == "" {
-			b = "main"
-		}
-		branch = sql.NullString{String: b, Valid: true}
+	buildCmd := existing.BuildCmd
+	if req.BuildCmd != nil {
+		buildCmd = *req.BuildCmd
 	}
 
-	if err := db.UpdateApp(h.database, id, req.Name, req.StartCmd, req.BuildCmd, req.WorkDir, req.Port, logPath, repoURL, branch); err != nil {
+	repoURL := existing.RepoURL
+	branch := existing.Branch
+	if req.RepoURL != nil {
+		if *req.RepoURL == "" {
+			repoURL = sql.NullString{}
+			branch = sql.NullString{}
+		} else {
+			repoURL = sql.NullString{String: *req.RepoURL, Valid: true}
+			b := "main"
+			if req.Branch != nil && *req.Branch != "" {
+				b = *req.Branch
+			} else if existing.Branch.Valid {
+				b = existing.Branch.String
+			}
+			branch = sql.NullString{String: b, Valid: true}
+		}
+	} else if req.Branch != nil && *req.Branch != "" && existing.RepoURL.Valid {
+		branch = sql.NullString{String: *req.Branch, Valid: true}
+	}
+
+	if err := db.UpdateApp(h.database, id, req.Name, req.StartCmd, buildCmd, req.WorkDir, req.Port, logPath, repoURL, branch); err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "update failed: " + err.Error()})
 		return
 	}

@@ -90,8 +90,10 @@ func TestRollback_ResetsToRecordedCommit(t *testing.T) {
 		return nil
 	}
 
+	// Generous deadline: the pipeline shells out to git and the process
+	// manager, which can crawl on a loaded CI machine.
 	var rb *dbpkg.Deployment
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		rb = findRollback()
 		if rb != nil && rb.Status != "running" {

@@ -14,6 +14,15 @@ import (
 type contextKey string
 
 const userKey contextKey = "user"
+const tokenScopeKey contextKey = "tokenScope"
+
+// isTokenAuth reports whether the request was authenticated with a scoped
+// API token rather than the admin JWT. Handlers use this to withhold
+// secrets (like webhook secrets) from token-authenticated responses.
+func isTokenAuth(r *http.Request) bool {
+	_, ok := r.Context().Value(tokenScopeKey).(string)
+	return ok
+}
 
 /*
 DBAuthMiddleware reads the JWT secret from the database on each request
@@ -41,7 +50,8 @@ func DBAuthMiddleware(database *sql.DB) func(http.Handler) http.Handler {
 					http.Error(w, `{"error":"token scope does not allow this"}`, http.StatusForbidden)
 					return
 				}
-				next.ServeHTTP(w, r)
+				ctx := context.WithValue(r.Context(), tokenScopeKey, t.Scope)
+				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 
@@ -67,6 +77,11 @@ var deployActionPath = regexp.MustCompile(`^/api/apps/[^/]+/(start|stop|restart|
 func tokenAllowed(scope, method, path string) bool {
 	// Token management always requires the admin JWT.
 	if strings.HasPrefix(path, "/api/tokens") {
+		return false
+	}
+	// Settings hold panel credentials (git token, notification secrets),
+	// so even read scope stays out.
+	if strings.HasPrefix(path, "/api/settings") {
 		return false
 	}
 	switch scope {

@@ -469,10 +469,10 @@ func (m *Manager) handleCrash(appID string, p *proc) {
 
 	if attempt >= maxRestarts {
 		db.UpdateAppStatus(m.database, appID, "crashed", sql.NullInt64{})
-		m.appendAppLog(appID, fmt.Sprintf("=== Crashed %d times in a row, giving up. Fix the app and press Start. ===", attempt+1))
+		m.appendAppLog(appID, fmt.Sprintf("=== Still crashing after %d restart attempts, giving up. Fix the app and press Start. ===", maxRestarts))
 		if app, err := db.GetApp(m.database, appID); err == nil {
 			notify.Go(m.database, "App crashed: "+app.Name,
-				fmt.Sprintf("Gave up after %d restart attempts. Check the logs and press Start.", attempt+1))
+				fmt.Sprintf("Gave up after %d restart attempts. Check the logs and press Start.", maxRestarts))
 		}
 		return
 	}

@@ -189,8 +189,8 @@ export default function Deploy() {
               {createdApp && system?.server_ip && (
                 <p className="deploy-state-url">
                   Your app is live at{' '}
-                  <a href={`http://${system.server_ip}:${createdApp.port}`} target="_blank" rel="noreferrer">
-                    http://{system.server_ip}:{createdApp.port}
+                  <a href={`http://${system.server_ip}:${createdApp.url_port}`} target="_blank" rel="noreferrer">
+                    http://{system.server_ip}:{createdApp.url_port}
                   </a>
                 </p>
               )}

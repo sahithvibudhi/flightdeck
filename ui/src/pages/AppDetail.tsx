@@ -339,11 +339,11 @@ export default function AppDetail() {
               {app.status === 'running' && (domains.length > 0 || system?.server_ip) && (
                 <a
                   className="app-url"
-                  href={domains.length > 0 ? `https://${domains[0].domain}` : `http://${system!.server_ip}:${app.port}`}
+                  href={domains.length > 0 ? `https://${domains[0].domain}` : `http://${system!.server_ip}:${app.url_port}`}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  {domains.length > 0 ? domains[0].domain : `${system!.server_ip}:${app.port}`}
+                  {domains.length > 0 ? domains[0].domain : `${system!.server_ip}:${app.url_port}`}
                   <ExternalLinkIcon />
                 </a>
               )}

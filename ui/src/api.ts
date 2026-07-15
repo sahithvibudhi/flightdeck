@@ -71,6 +71,9 @@ export interface App {
   id: string;
   name: string;
   port: number;
+  // Port the app is actually serving on right now; after a zero-downtime
+  // deploy this can be the standby port, so links should use it.
+  url_port: number;
   start_command: string;
   build_command: string;
   work_dir: string;
