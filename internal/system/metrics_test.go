@@ -66,6 +66,30 @@ func TestGetHistory_Order(t *testing.T) {
 	}
 }
 
+func TestCPUPercentBetween(t *testing.T) {
+	tests := []struct {
+		name string
+		prev cpuSample
+		cur  cpuSample
+		want float64
+	}{
+		{"half busy", cpuSample{busy: 100, total: 200}, cpuSample{busy: 150, total: 300}, 50.0},
+		{"idle", cpuSample{busy: 100, total: 200}, cpuSample{busy: 100, total: 300}, 0},
+		{"fully busy", cpuSample{busy: 100, total: 200}, cpuSample{busy: 200, total: 300}, 100},
+		{"zero total delta", cpuSample{busy: 100, total: 200}, cpuSample{busy: 100, total: 200}, 0},
+		{"counter went backwards", cpuSample{busy: 100, total: 300}, cpuSample{busy: 100, total: 200}, 0},
+		{"clamped high", cpuSample{busy: 100, total: 200}, cpuSample{busy: 250, total: 300}, 100},
+		{"clamped low", cpuSample{busy: 100, total: 200}, cpuSample{busy: 50, total: 300}, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := cpuPercentBetween(tt.prev, tt.cur); got != tt.want {
+				t.Errorf("cpuPercentBetween(%+v, %+v) = %v, want %v", tt.prev, tt.cur, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCleanup(t *testing.T) {
 	database := openTestDB(t)
 	database.Exec(`INSERT INTO server_metrics (cpu, mem_used, mem_total, disk_used, disk_total, created_at) VALUES (1, 1, 1, 1, 1, datetime('now', '-25 hours'))`)
