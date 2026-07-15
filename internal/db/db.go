@@ -59,6 +59,14 @@ var migrations = []string{
 	)`,
 	`ALTER TABLE deployments ADD COLUMN commit_sha TEXT DEFAULT ''`,
 	`ALTER TABLE deployments ADD COLUMN commit_msg TEXT DEFAULT ''`,
+	`CREATE TABLE IF NOT EXISTS api_tokens (
+		id         TEXT PRIMARY KEY,
+		name       TEXT NOT NULL,
+		hash       TEXT NOT NULL UNIQUE,
+		scope      TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		last_used  DATETIME
+	)`,
 }
 
 func Open(path string) (*sql.DB, error) {

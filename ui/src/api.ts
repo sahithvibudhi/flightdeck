@@ -237,6 +237,29 @@ export const updateGitToken = (token: string) =>
   request('/settings/git-token', { method: 'PUT', body: JSON.stringify({ token }) });
 export const getSystemInfo = () => request<SystemInfo>('/system');
 
+export interface ApiToken {
+  id: string;
+  name: string;
+  scope: string;
+  created_at: string;
+  last_used: string | null;
+}
+
+export interface CreatedApiToken {
+  id: string;
+  name: string;
+  scope: string;
+  token: string;
+}
+
+export const listApiTokens = () => request<ApiToken[]>('/tokens');
+export const createApiToken = (name: string, scope: string) =>
+  request<CreatedApiToken>('/tokens', {
+    method: 'POST',
+    body: JSON.stringify({ name, scope }),
+  });
+export const deleteApiToken = (id: string) => request(`/tokens/${id}`, { method: 'DELETE' });
+
 export interface ServerSnapshot {
   cpu_percent: number;
   memory_used_mb: number;

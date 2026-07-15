@@ -20,6 +20,7 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string) *chi.Mux {
 	domainsHandler := NewDomainsHandler(database)
 	settingsHandler := NewSettingsHandler(database)
 	setupHandler := NewSetupHandler(database)
+	tokensHandler := NewTokensHandler(database)
 
 	// Push-to-deploy webhooks authenticate with per-app HMAC secrets
 	// instead of JWTs, so they live outside /api.
@@ -57,6 +58,10 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string) *chi.Mux {
 			r.Get("/apps/{id}/domains", domainsHandler.List)
 			r.Post("/apps/{id}/domains", domainsHandler.Add)
 			r.Delete("/apps/{id}/domains/{domain}", domainsHandler.Remove)
+
+			r.Get("/tokens", tokensHandler.List)
+			r.Post("/tokens", tokensHandler.Create)
+			r.Delete("/tokens/{id}", tokensHandler.Delete)
 
 			r.Get("/settings", settingsHandler.Get)
 			r.Put("/settings/domain", settingsHandler.UpdateDomain)

@@ -3,10 +3,12 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   getSettings, updatePanelDomain, changePassword,
   updateGitToken, getSystemInfo, installRuntime,
+  listApiTokens, createApiToken, deleteApiToken,
   errMsg,
-  type Settings as SettingsType, type SystemInfo,
+  type Settings as SettingsType, type SystemInfo, type ApiToken,
 } from '../api';
 import { toast } from '../components/toastBus';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsType | null>(null);
@@ -18,15 +20,22 @@ export default function Settings() {
   const [error, setError] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
   const [replacingToken, setReplacingToken] = useState(false);
+  const [apiTokens, setApiTokens] = useState<ApiToken[]>([]);
+  const [tokenName, setTokenName] = useState('');
+  const [tokenScope, setTokenScope] = useState('read');
+  const [newToken, setNewToken] = useState('');
+  const [tokenCopied, setTokenCopied] = useState(false);
+  const [deletingToken, setDeletingToken] = useState<ApiToken | null>(null);
   const location = useLocation();
 
   useEffect(() => { loadAll(); }, []);
 
   async function loadAll() {
     try {
-      const [s, sys] = await Promise.all([getSettings(), getSystemInfo()]);
+      const [s, sys, tokens] = await Promise.all([getSettings(), getSystemInfo(), listApiTokens()]);
       setSettings(s);
       setSystem(sys);
+      setApiTokens(tokens);
       setDomain(s.panel_domain || '');
     } catch { /* transient */ }
   }
@@ -83,6 +92,45 @@ export default function Settings() {
       setError(errMsg(err));
     } finally {
       setInstalling(null);
+    }
+  }
+
+  async function handleCreateToken(e: FormEvent) {
+    e.preventDefault();
+    setError('');
+    try {
+      const created = await createApiToken(tokenName.trim(), tokenScope);
+      setNewToken(created.token);
+      setTokenCopied(false);
+      setTokenName('');
+      setApiTokens(await listApiTokens());
+      flash(`Token "${created.name}" created`);
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  }
+
+  async function handleDeleteToken() {
+    if (!deletingToken) return;
+    const target = deletingToken;
+    setDeletingToken(null);
+    setError('');
+    try {
+      await deleteApiToken(target.id);
+      setApiTokens(await listApiTokens());
+      flash(`Token "${target.name}" deleted`);
+    } catch (err) {
+      setError(errMsg(err));
+    }
+  }
+
+  async function copyNewToken() {
+    try {
+      await navigator.clipboard.writeText(newToken);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 2000);
+    } catch {
+      setError('Could not copy — copy the token manually');
     }
   }
 
@@ -215,6 +263,65 @@ export default function Settings() {
           </div>
 
           <div className="card">
+            <h2>API Tokens</h2>
+            <p className="form-hint" style={{ marginBottom: 12 }}>
+              Revocable tokens for CLI and CI use. <code>read</code> allows GET requests;
+              <code> deploy</code> also allows start, stop, restart, pull, and deploy.
+            </p>
+
+            {newToken && (
+              <div style={{ marginBottom: 16 }}>
+                <div className="webhook-row">
+                  <code className="webhook-url">{newToken}</code>
+                  <button className="btn btn-secondary btn-sm" onClick={copyNewToken}>
+                    {tokenCopied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <p className="form-hint" style={{ marginTop: 8 }}>
+                  Copy it now, it is not shown again.
+                </p>
+              </div>
+            )}
+
+            {apiTokens.length === 0 ? (
+              <p className="list-empty">No tokens yet</p>
+            ) : (
+              apiTokens.map(t => (
+                <div key={t.id} className="webhook-row" style={{ marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div>{t.name} <span className="form-hint" style={{ display: 'inline' }}>({t.scope})</span></div>
+                    <p className="form-hint">
+                      Created {t.created_at} · {t.last_used ? `Last used ${t.last_used}` : 'Never used'}
+                    </p>
+                  </div>
+                  <button className="btn btn-danger btn-sm" onClick={() => setDeletingToken(t)}>Delete</button>
+                </div>
+              ))
+            )}
+
+            <form onSubmit={handleCreateToken} className="flex gap-sm mt-sm" style={{ alignItems: 'flex-end' }}>
+              <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                <label htmlFor="token-name">Name</label>
+                <input
+                  id="token-name"
+                  value={tokenName}
+                  onChange={e => setTokenName(e.target.value)}
+                  placeholder="deploy-bot"
+                  maxLength={60}
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label htmlFor="token-scope">Scope</label>
+                <select id="token-scope" value={tokenScope} onChange={e => setTokenScope(e.target.value)}>
+                  <option value="read">read</option>
+                  <option value="deploy">deploy</option>
+                </select>
+              </div>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={!tokenName.trim()}>Create token</button>
+            </form>
+          </div>
+
+          <div className="card">
             <h2>Change Password</h2>
             <form onSubmit={handlePassword}>
               <div className="form-group">
@@ -230,6 +337,16 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deletingToken !== null}
+        title="Delete API token"
+        message={`Delete token "${deletingToken?.name}"? Anything still using it will stop working immediately.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={handleDeleteToken}
+        onCancel={() => setDeletingToken(null)}
+      />
     </div>
   );
 }
