@@ -322,6 +322,67 @@ func GetDomainByName(db *sql.DB, domain string) (*Domain, error) {
 	return &d, nil
 }
 
+type APIToken struct {
+	ID        string
+	Name      string
+	Hash      string
+	Scope     string
+	CreatedAt string
+	LastUsed  sql.NullString
+}
+
+func InsertAPIToken(db *sql.DB, name, hash, scope string) (*APIToken, error) {
+	id := uuid.New().String()
+	_, err := db.Exec(
+		`INSERT INTO api_tokens (id, name, hash, scope) VALUES (?, ?, ?, ?)`,
+		id, name, hash, scope,
+	)
+	if err != nil {
+		return nil, err
+	}
+	var t APIToken
+	err = db.QueryRow(`SELECT id, name, hash, scope, created_at, last_used FROM api_tokens WHERE id = ?`, id).
+		Scan(&t.ID, &t.Name, &t.Hash, &t.Scope, &t.CreatedAt, &t.LastUsed)
+	return &t, err
+}
+
+func ListAPITokens(db *sql.DB) ([]APIToken, error) {
+	rows, err := db.Query(`SELECT id, name, hash, scope, created_at, last_used FROM api_tokens ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []APIToken
+	for rows.Next() {
+		var t APIToken
+		if err := rows.Scan(&t.ID, &t.Name, &t.Hash, &t.Scope, &t.CreatedAt, &t.LastUsed); err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, t)
+	}
+	return tokens, rows.Err()
+}
+
+func DeleteAPIToken(db *sql.DB, id string) error {
+	_, err := db.Exec(`DELETE FROM api_tokens WHERE id = ?`, id)
+	return err
+}
+
+func GetAPITokenByHash(db *sql.DB, hash string) (*APIToken, error) {
+	var t APIToken
+	err := db.QueryRow(`SELECT id, name, hash, scope, created_at, last_used FROM api_tokens WHERE hash = ?`, hash).
+		Scan(&t.ID, &t.Name, &t.Hash, &t.Scope, &t.CreatedAt, &t.LastUsed)
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.Exec(`UPDATE api_tokens SET last_used = CURRENT_TIMESTAMP WHERE id = ?`, t.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func ListAllDomains(db *sql.DB) ([]Domain, error) {
 	rows, err := db.Query(`SELECT id, app_id, domain, created_at FROM domains`)
 	if err != nil {

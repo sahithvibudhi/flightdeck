@@ -30,6 +30,16 @@ func GenerateSecret() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// GenerateAPIToken returns a new plaintext API token. Only its sha256
+// is stored, so the plaintext is shown to the user exactly once.
+func GenerateAPIToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate api token: %w", err)
+	}
+	return "fd_" + hex.EncodeToString(b), nil
+}
+
 func IssueToken(username, secret string) (string, error) {
 	claims := jwt.MapClaims{
 		"sub": username,
