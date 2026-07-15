@@ -121,6 +121,9 @@ export const listDeployments = (id: string) =>
 export const deployApp = (id: string) =>
   request<{ deployment_id: string }>(`/apps/${id}/deploy`, { method: 'POST' });
 
+export const rollbackDeployment = (appId: string, depId: string) =>
+  request<{ deployment_id: string }>(`/apps/${appId}/deployments/${depId}/rollback`, { method: 'POST' });
+
 export const createSampleApp = () => request<App>('/apps/sample', { method: 'POST' });
 
 export const createApp = (data: {

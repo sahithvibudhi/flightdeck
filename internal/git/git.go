@@ -40,6 +40,21 @@ func Pull(dir, token string) (string, error) {
 }
 
 /*
+Reset moves the working tree to a specific commit. Used by rollback;
+a later pull fast-forwards back to the branch tip.
+*/
+func Reset(dir, sha string) error {
+	cmd := exec.Command("git", "reset", "--hard", sha)
+	cmd.Dir = dir
+	cmd.Env = gitEnv("")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git reset failed: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+/*
 Head returns the current commit's full SHA and subject line, so deploys
 can record exactly what was shipped.
 */

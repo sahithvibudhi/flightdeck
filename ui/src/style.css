@@ -526,6 +526,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   font-size: 12px;
 }
 
+.deployment-rollback {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 .deployment-detail {
   color: var(--text-tertiary);
   font-size: 12px;
