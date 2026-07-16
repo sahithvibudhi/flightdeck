@@ -15,7 +15,7 @@ curl -sSL https://raw.githubusercontent.com/sahithvibudhi/flightdeck/main/script
 
 Then open `http://your-server-ip:3000` and create your admin account in the browser. That's the whole install.
 
-![flightdeck demo: login, live deploy, push-to-deploy webhook](docs/screenshots/demo.gif)
+![flightdeck demo: dashboard, live deploy with staged log, log filtering, rollback history, theme toggle](docs/screenshots/demo.gif)
 
 ## Why flightdeck?
 
@@ -50,10 +50,13 @@ If you want 280+ one-click services, teams, and multi-server orchestration, use 
 - **Deploy apps** from GitHub, a zip upload, or a directory already on the server
 - **Push-to-deploy**: every app gets an HMAC-signed webhook URL; push to GitHub and it pulls, rebuilds, restarts
 - **Zero-downtime deploys**: set a health check path and deploys start the new process, wait for it to pass, switch traffic, then stop the old one
+- **Live deploy logs**: watch pull, build, health check, and traffic switch stream stage by stage while a deploy runs; every deployment keeps its full log
+- **One-click rollback** to any previous successful deployment
 - **Crash recovery**: processes that die are restarted with exponential backoff; persistent failures are marked crashed with the reason in the logs
 - **Automatic SSL** via Caddy reverse proxy: add a domain and certificates just work
-- **Live logs** streamed to the dashboard over SSE, not polled snapshots
-- **Deployment history** showing what triggered each deploy and whether it succeeded
+- **Live logs** streamed to the dashboard over SSE, with filtering, follow/pause, and download
+- **Deployment history** showing what triggered each deploy, the commit, duration, and which one is serving right now
+- **Notifications** to Discord, Telegram, or any webhook on deploy success, failure, and crashes
 - **Environment variables** per app, managed from the UI
 - **Build commands** like `npm install && npm run build` before start
 - **Process control**: start, stop, restart from the dashboard; stop reaches the whole process group
@@ -67,15 +70,19 @@ The dashboard, with every app's status, resource usage, and URL:
 
 ![dashboard](docs/screenshots/dashboard-dark.png)
 
-An app's page: live logs, push-to-deploy webhook, deployment history, health checks:
+An app's page, with tabs for logs, deployments, and configuration:
 
-![app detail with push-to-deploy and live logs](docs/screenshots/app-detail-dark.png)
+![app detail with tabs and live metrics](docs/screenshots/app-detail-dark.png)
+
+Deploys stream their build output live, stage by stage:
+
+![live deploy log with stages](docs/screenshots/deploy-log-dark.png)
 
 Deploying is one form:
 
 ![deploy form](docs/screenshots/deploy-dark.png)
 
-There's a light theme too. It follows your system preference:
+There's a light theme too: follow the OS or pick one from the navbar:
 
 ![dashboard in light mode](docs/screenshots/dashboard-light.png)
 

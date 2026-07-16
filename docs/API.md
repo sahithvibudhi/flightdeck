@@ -26,6 +26,9 @@ POST   /api/apps/:id/restart        Restart app
 POST   /api/apps/:id/pull           Git pull latest changes
 POST   /api/apps/:id/deploy         Pull + build + restart, recorded in history
 GET    /api/apps/:id/deployments    Deployment history
+POST   /api/apps/:id/deployments/:depID/rollback     Roll back to that deployment's commit
+GET    /api/apps/:id/deployments/:depID/logs         Captured deploy log {lines, running}
+GET    /api/apps/:id/deployments/:depID/logs/stream  Live deploy log (SSE; ends with "done" event)
 GET    /api/apps/:id/logs?lines=100 Log snapshot
 GET    /api/apps/:id/logs/stream    Live log tail (SSE; pass ?token=)
 ```
