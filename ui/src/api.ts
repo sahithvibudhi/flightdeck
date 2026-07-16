@@ -20,6 +20,28 @@ export function isAuthenticated(): boolean {
   return !!getToken();
 }
 
+/*
+Connectivity bus: request() reports whether the server is reachable and
+the shared Layout shows a banner while it isn't. Background pollers
+otherwise swallow network errors silently.
+*/
+let connListener: ((offline: boolean) => void) | null = null;
+let isOffline = false;
+
+export function subscribeConnectivity(fn: ((offline: boolean) => void) | null) {
+  connListener = fn;
+  fn?.(isOffline);
+}
+
+function setOffline(v: boolean) {
+  if (isOffline !== v) {
+    isOffline = v;
+    connListener?.(v);
+  }
+}
+
+export const SESSION_EXPIRED_KEY = 'session_expired';
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -31,12 +53,22 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...options, headers });
+  } catch (err) {
+    setOffline(true);
+    throw err instanceof TypeError ? new Error("Can't reach the server") : err;
+  }
+  setOffline(false);
 
-  if (res.status === 401) {
+  // A 401 on a normal call means the session expired; a 401 from the
+  // login endpoint itself is just wrong credentials and stays inline.
+  if (res.status === 401 && path !== '/auth/login') {
     clearToken();
+    sessionStorage.setItem(SESSION_EXPIRED_KEY, '1');
     window.location.href = '/login';
-    throw new Error('Unauthorized');
+    throw new Error('Session expired');
   }
 
   const data = await res.json();
@@ -126,6 +158,18 @@ export const deployApp = (id: string) =>
 
 export const rollbackDeployment = (appId: string, depId: string) =>
   request<{ deployment_id: string }>(`/apps/${appId}/deployments/${depId}/rollback`, { method: 'POST' });
+
+export const getDeploymentLogs = (appId: string, depId: string) =>
+  request<{ lines: string[]; running: boolean }>(`/apps/${appId}/deployments/${depId}/logs`);
+
+/*
+Live deploy output over SSE. The server sends an "event: done" when the
+deploy finishes so the client can close instead of reconnecting.
+*/
+export function streamDeploymentLogs(appId: string, depId: string): EventSource {
+  const token = getToken() || '';
+  return new EventSource(`${BASE}/apps/${appId}/deployments/${depId}/logs/stream?token=${encodeURIComponent(token)}`);
+}
 
 export const createSampleApp = () => request<App>('/apps/sample', { method: 'POST' });
 

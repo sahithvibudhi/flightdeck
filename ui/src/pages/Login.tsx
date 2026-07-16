@@ -1,15 +1,20 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { login, setToken, getSetupStatus, errMsg } from '../api';
+import { login, setToken, getSetupStatus, errMsg, SESSION_EXPIRED_KEY } from '../api';
 
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (sessionStorage.getItem(SESSION_EXPIRED_KEY)) {
+      sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+      setNotice('Your session expired. Sign in again to continue.');
+    }
     getSetupStatus()
       .then(res => {
         if (res.needs_setup) navigate('/setup', { replace: true });
@@ -19,7 +24,12 @@ export default function Login() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!username.trim() || !password) {
+      setError('Enter your username and password');
+      return;
+    }
     setError('');
+    setNotice('');
     setLoading(true);
     try {
       const res = await login(username, password);
@@ -36,6 +46,7 @@ export default function Login() {
     <div className="login-wrapper">
       <div className="login-box">
         <div className="login-brand">flightdeck</div>
+        {notice && <p className="success-msg" role="status">{notice}</p>}
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="login-username">Username</label>

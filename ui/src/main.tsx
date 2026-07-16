@@ -9,7 +9,10 @@ import Apps from './pages/Apps';
 import Deploy from './pages/Deploy';
 import AppDetail from './pages/AppDetail';
 import Settings from './pages/Settings';
+import { initTheme } from './lib/theme';
 import './style.css';
+
+initTheme();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
