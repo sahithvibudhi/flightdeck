@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -118,6 +119,8 @@ func TestTokenAllowed(t *testing.T) {
 		{"deploy", "POST", "/api/apps", false},
 		{"deploy", "PUT", "/api/apps/abc", false},
 		{"deploy", "POST", "/api/settings/domain", false},
+		{"read", "GET", "/api/settings", false},
+		{"deploy", "GET", "/api/settings", false},
 		{"read", "GET", "/api/tokens", false},
 		{"deploy", "GET", "/api/tokens", false},
 		{"deploy", "DELETE", "/api/tokens/abc", false},
@@ -175,5 +178,44 @@ func TestDBAuthMiddleware_APIToken(t *testing.T) {
 	handler.ServeHTTP(rr4, req4)
 	if rr4.Code != http.StatusUnauthorized {
 		t.Errorf("unknown fd_ token: expected 401, got %d", rr4.Code)
+	}
+}
+
+// Webhook secrets grant deploy access, so responses to token-authenticated
+// requests must not include them; the admin JWT still sees them.
+func TestApps_TokenAuthHidesWebhookSecret(t *testing.T) {
+	h, database := setupAppsHandler(t)
+	app := seedTestApp(t, database, "app1", 4000)
+	if err := dbpkg.SetWebhookSecret(database, app.ID, "supersecret"); err != nil {
+		t.Fatalf("set webhook secret: %v", err)
+	}
+
+	asToken := func(r *http.Request) *http.Request {
+		return r.WithContext(context.WithValue(r.Context(), tokenScopeKey, "read"))
+	}
+
+	rr := httptest.NewRecorder()
+	h.List(rr, asToken(httptest.NewRequest("GET", "/api/apps", nil)))
+	var list []appResponse
+	json.Unmarshal(rr.Body.Bytes(), &list)
+	if len(list) != 1 || list[0].WebhookSecret != "" {
+		t.Errorf("token-auth List leaked webhook secret: %+v", list)
+	}
+
+	rr2 := httptest.NewRecorder()
+	h.Get(rr2, asToken(withURLParam(httptest.NewRequest("GET", "/api/apps/"+app.ID, nil), "id", app.ID)))
+	var got appResponse
+	json.Unmarshal(rr2.Body.Bytes(), &got)
+	if got.WebhookSecret != "" {
+		t.Errorf("token-auth Get leaked webhook secret: %q", got.WebhookSecret)
+	}
+
+	// JWT-authenticated requests (no token scope in context) still see it.
+	rr3 := httptest.NewRecorder()
+	h.Get(rr3, withURLParam(httptest.NewRequest("GET", "/api/apps/"+app.ID, nil), "id", app.ID))
+	var admin appResponse
+	json.Unmarshal(rr3.Body.Bytes(), &admin)
+	if admin.WebhookSecret != "supersecret" {
+		t.Errorf("admin Get should include webhook secret, got %q", admin.WebhookSecret)
 	}
 }

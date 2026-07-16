@@ -208,10 +208,10 @@ export default function Apps() {
                       className="app-card-domain app-card-domain-link"
                       role="link"
                       tabIndex={0}
-                      onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(`http://${system.server_ip}:${app.port}`, '_blank'); }}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.open(`http://${system.server_ip}:${app.port}`, '_blank'); } }}
+                      onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(`http://${system.server_ip}:${app.url_port}`, '_blank'); }}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.open(`http://${system.server_ip}:${app.url_port}`, '_blank'); } }}
                     >
-                      {system.server_ip}:{app.port}
+                      {system.server_ip}:{app.url_port}
                     </span>
                   </div>
                 ))}
