@@ -285,14 +285,14 @@ export default function Apps() {
               <li><span className="getting-started-num">2</span> Point a DNS record here and add the domain — SSL is automatic</li>
               <li><span className="getting-started-num">3</span> Paste the app's webhook URL into GitHub for push-to-deploy</li>
             </ol>
-            <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
+            <Link to="/deploy" className="btn btn-primary btn-sm">
               Deploy your first app
             </Link>
             <button className="btn btn-secondary btn-sm" style={{ marginTop: 12 }} onClick={handleDeploySample} disabled={sampleLoading}>
               {sampleLoading ? <span className="spinner" /> : 'Deploy a sample app instead'}
             </button>
             {sampleError && <p className="error-msg">{sampleError}</p>}
-            <Link to="/settings" className="btn-text" style={{ textDecoration: 'none', marginTop: 12, fontSize: 12 }}>
+            <Link to="/settings" className="btn-text" style={{ marginTop: 12, fontSize: 12 }}>
               or set up runtimes and tokens in Settings
             </Link>
           </div>

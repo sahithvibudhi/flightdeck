@@ -397,7 +397,7 @@ export default function AppDetail() {
           <div className="empty-state fade-in">
             <p style={{ fontSize: 15, marginBottom: 8 }}>App not found</p>
             <p>It may have been deleted, or the link is stale.</p>
-            <Link to="/" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
+            <Link to="/" className="btn btn-primary btn-sm">
               Back to apps
             </Link>
           </div>
@@ -646,37 +646,37 @@ export default function AppDetail() {
               {editing ? (
                 <form onSubmit={handleSaveConfig}>
                   <div className="config-grid">
-                    <div className="form-group" style={{ marginBottom: 12 }}>
+                    <div className="form-group">
                       <label htmlFor="edit-name">App name</label>
                       <input id="edit-name" value={editName} onChange={e => setEditName(e.target.value)} />
                     </div>
-                    <div className="form-group" style={{ marginBottom: 12 }}>
+                    <div className="form-group">
                       <label htmlFor="edit-start">Start command</label>
                       <input id="edit-start" value={editStartCmd} onChange={e => setEditStartCmd(e.target.value)} />
                     </div>
-                    <div className="form-group" style={{ marginBottom: 12 }}>
+                    <div className="form-group">
                       <label htmlFor="edit-build">Build command</label>
                       <input id="edit-build" value={editBuildCmd} onChange={e => setEditBuildCmd(e.target.value)} placeholder="e.g. npm install" />
                     </div>
-                    <div className="form-group" style={{ marginBottom: 12 }}>
+                    <div className="form-group">
                       <label htmlFor="edit-port">Port</label>
                       <input id="edit-port" value={editPort} onChange={e => setEditPort(e.target.value.replace(/\D/g, ''))} placeholder="e.g. 3000" />
                     </div>
-                    <div className="form-group" style={{ marginBottom: 12 }}>
+                    <div className="form-group">
                       <label htmlFor="edit-repo">Repository URL</label>
                       <input id="edit-repo" value={editRepoUrl} onChange={e => setEditRepoUrl(e.target.value)} placeholder="https://github.com/..." />
                     </div>
-                    <div className="form-group" style={{ marginBottom: 12 }}>
+                    <div className="form-group">
                       <label htmlFor="edit-branch">Branch</label>
                       <input id="edit-branch" value={editBranch} onChange={e => setEditBranch(e.target.value)} placeholder="main" />
                     </div>
                     {app.work_dir && (
-                      <div className="form-group" style={{ marginBottom: 12 }}>
+                      <div className="form-group">
                         <label htmlFor="edit-workdir">Working directory</label>
                         <input id="edit-workdir" value={editWorkDir} onChange={e => setEditWorkDir(e.target.value)} placeholder="/home/deploy/my-app" />
                       </div>
                     )}
-                    <div className="form-group" style={{ marginBottom: 12 }}>
+                    <div className="form-group">
                       <label htmlFor="edit-health">Health check path</label>
                       <input id="edit-health" value={editHealthPath} onChange={e => setEditHealthPath(e.target.value)} placeholder="/health" />
                       <p className="form-hint">Enables zero-downtime deploys. Your app must listen on $PORT.</p>

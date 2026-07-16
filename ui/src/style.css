@@ -386,6 +386,15 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   min-width: 30px;
 }
 
+/* Links styled as buttons should never show an underline. */
+a.btn, a.btn:hover, a.btn-text, a.btn-text:hover { text-decoration: none; }
+
+.form-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 20px 0;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -1253,6 +1262,8 @@ Domain links sit above it with their own z-index.
   gap: 12px;
 }
 
+.config-grid .form-group { margin-bottom: 12px; }
+
 .config-item {
   display: flex;
   flex-direction: column;
@@ -1382,4 +1393,8 @@ Domain links sit above it with their own z-index.
   .env-row { flex-wrap: wrap; }
   .env-row input:first-child { flex: 1 1 100%; }
   .env-row input:nth-child(2) { flex: 1 1 100%; }
+
+  .config-grid { grid-template-columns: 1fr; }
+  .nav-crumb { display: none; }
+  .app-search { width: 120px; }
 }

@@ -241,9 +241,9 @@ export default function Deploy() {
                 )
               )}
               <div className="deploy-state-actions">
-                <Link to="/" className="btn btn-primary" style={{ textDecoration: 'none' }}>Go to dashboard</Link>
+                <Link to="/" className="btn btn-primary">Go to dashboard</Link>
                 {createdApp && (
-                  <Link to={`/apps/${createdApp.id}`} className="btn btn-secondary" style={{ textDecoration: 'none' }}>Configure domain</Link>
+                  <Link to={`/apps/${createdApp.id}`} className="btn btn-secondary">Configure domain</Link>
                 )}
               </div>
             </>
@@ -261,7 +261,7 @@ export default function Deploy() {
                   Fix and retry
                 </button>
                 {createdApp && (
-                  <Link to={`/apps/${createdApp.id}`} className="btn btn-secondary" style={{ textDecoration: 'none' }}>
+                  <Link to={`/apps/${createdApp.id}`} className="btn btn-secondary">
                     Open the app page
                   </Link>
                 )}
@@ -383,7 +383,7 @@ export default function Deploy() {
           </div>
         )}
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+        <hr className="form-divider" />
 
         <div className="form-group">
           <label htmlFor="deploy-name">App name</label>
@@ -460,7 +460,6 @@ export default function Deploy() {
                       aria-label="Variable name"
                       value={env.key}
                       onChange={e => updateEnv(i, 'key', e.target.value)}
-                      style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
                     />
                     <input
                       placeholder="value"
@@ -469,7 +468,6 @@ export default function Deploy() {
                       type={visible ? 'text' : 'password'}
                       autoComplete="new-password"
                       onChange={e => updateEnv(i, 'value', e.target.value)}
-                      style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
                     />
                     <button
                       type="button"
