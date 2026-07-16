@@ -909,6 +909,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 }
 
 .app-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -916,7 +917,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  text-decoration: none;
   color: var(--text);
   transition: border-color var(--transition);
 }
@@ -925,6 +925,47 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
 .app-card-header { display: flex; align-items: center; justify-content: space-between; }
 .app-card-name { font-weight: 500; font-size: 14px; letter-spacing: -0.01em; }
+
+/*
+Stretched-link pattern: the name anchor's ::after covers the card so
+the whole card is clickable without nesting interactive elements.
+Domain links sit above it with their own z-index.
+*/
+.app-card-link { color: var(--text); text-decoration: none; }
+.app-card-link::after { content: ''; position: absolute; inset: 0; }
+.app-card-domain-link { position: relative; z-index: 1; }
+
+.app-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.app-card-deployed {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.app-card-deployed-failed { color: var(--error); }
+
+.app-search {
+  width: 180px;
+  height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.app-sort {
+  width: auto;
+  height: 30px;
+  padding: 4px 28px 4px 10px;
+  font-size: 12px;
+}
+
+.runtime-pill-compact { font-size: 10px; padding: 0 6px; }
 
 .app-card-repo {
   font-family: var(--font-mono);
@@ -968,6 +1009,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
   background: var(--bg);
   border-radius: 4px;
   border: 1px solid var(--border);
+  text-decoration: none;
 }
 
 .metrics-bar {
@@ -1100,6 +1142,17 @@ button:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 }
 
 .settings-grid { display: flex; flex-direction: column; gap: 16px; }
+
+.settings-group-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-top: 8px;
+}
+
+.settings-group-title:first-child { margin-top: 0; }
 
 .token-display {
   display: flex;

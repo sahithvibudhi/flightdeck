@@ -118,6 +118,8 @@ export interface App {
   cpu_percent: number;
   memory_mb: number;
   created_at: string;
+  last_deploy_at?: string;
+  last_deploy_status?: string;
 }
 
 export const listApps = () => request<App[]>('/apps');

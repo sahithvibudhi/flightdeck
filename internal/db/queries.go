@@ -283,6 +283,16 @@ func ListDeployments(db *sql.DB, appID string, limit int) ([]Deployment, error) 
 	return deps, rows.Err()
 }
 
+// LatestDeployment returns the newest deployment for an app, or nil
+// when the app has never been deployed.
+func LatestDeployment(db *sql.DB, appID string) (*Deployment, error) {
+	deps, err := ListDeployments(db, appID, 1)
+	if err != nil || len(deps) == 0 {
+		return nil, err
+	}
+	return &deps[0], nil
+}
+
 // GetDeployment fetches one deployment scoped to an app, including the
 // stored deploy log (which ListDeployments deliberately omits to keep
 // list payloads small).

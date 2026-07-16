@@ -10,6 +10,7 @@ import {
 import { EyeIcon, EyeOffIcon, ExternalLinkIcon } from '../components/Icons';
 import { toast } from '../components/toastBus';
 import { relativeTime, exactTime, duration } from '../lib/time';
+import { parseEnvText, mergeEnvs } from '../lib/env';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Layout from '../components/Layout';
 import LogViewer from '../components/LogViewer';
@@ -278,35 +279,18 @@ export default function AppDetail() {
     setEnvs(envs.filter((_, i) => i !== index));
   }
 
-  /*
-  Paste a whole .env file: KEY=VALUE lines are parsed and merged over
-  the current list (later keys win), comments and blanks skipped.
-  */
+  // Paste a whole .env file and merge it over the current list.
   function importEnvText() {
     const text = window.prompt('Paste .env contents (KEY=VALUE lines):');
     if (!text) return;
-    const merged = new Map(envs.filter(e => e.key.trim()).map(e => [e.key, e.value]));
-    let count = 0;
-    for (const raw of text.split('\n')) {
-      const line = raw.trim();
-      if (!line || line.startsWith('#')) continue;
-      const eq = line.indexOf('=');
-      if (eq <= 0) continue;
-      const key = line.slice(0, eq).trim();
-      let value = line.slice(eq + 1).trim();
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
-      merged.set(key, value);
-      count++;
-    }
-    if (count === 0) {
+    const imported = parseEnvText(text);
+    if (imported.length === 0) {
       setEnvError('No KEY=VALUE lines found in the pasted text');
       return;
     }
     setEnvError('');
-    setEnvs(Array.from(merged, ([key, value]) => ({ key, value })));
-    toast(`Imported ${count} variable${count === 1 ? '' : 's'}. Review and save.`);
+    setEnvs(mergeEnvs(envs, imported));
+    toast(`Imported ${imported.length} variable${imported.length === 1 ? '' : 's'}. Review and save.`);
   }
 
   function toggleEnvVisibility(index: number) {
