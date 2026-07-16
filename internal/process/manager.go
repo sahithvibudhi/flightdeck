@@ -3,6 +3,7 @@ package process
 import (
 	"database/sql"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -86,10 +87,10 @@ func (m *Manager) AppDir(app *db.App) string {
 }
 
 func (m *Manager) StartApp(app *db.App) error {
-	return m.startApp(app, true)
+	return m.startApp(app, true, nil)
 }
 
-func (m *Manager) startApp(app *db.App, runBuild bool) error {
+func (m *Manager) startApp(app *db.App, runBuild bool, deployLog io.Writer) error {
 	m.mu.Lock()
 	if _, running := m.procs[app.ID]; running {
 		m.mu.Unlock()
@@ -97,7 +98,7 @@ func (m *Manager) startApp(app *db.App, runBuild bool) error {
 	}
 	m.mu.Unlock()
 
-	p, err := m.launch(app, app.Port, runBuild)
+	p, err := m.launch(app, app.Port, runBuild, deployLog)
 	if err != nil {
 		return err
 	}
@@ -136,7 +137,7 @@ It does not register the process in the procs map — callers decide how
 the process participates in the app lifecycle. A single goroutine owns
 cmd.Wait and closes done when the process exits.
 */
-func (m *Manager) launch(app *db.App, port int, runBuild bool) (*proc, error) {
+func (m *Manager) launch(app *db.App, port int, runBuild bool, deployLog io.Writer) (*proc, error) {
 	appDir := m.AppDir(app)
 	if err := os.MkdirAll(appDir, 0755); err != nil {
 		return nil, fmt.Errorf("create app dir: %w", err)
@@ -154,18 +155,24 @@ func (m *Manager) launch(app *db.App, port int, runBuild bool) (*proc, error) {
 	}
 
 	if runBuild && app.BuildCmd != "" {
-		fmt.Fprintf(logFile, "=== Running build: %s ===\n", app.BuildCmd)
+		// Build output lands in the app log as before, and also in the
+		// deploy log when a deploy is being watched live.
+		buildOut := io.Writer(logFile)
+		if deployLog != nil {
+			buildOut = io.MultiWriter(logFile, deployLog)
+		}
+		fmt.Fprintf(buildOut, "=== Running build: %s ===\n", app.BuildCmd)
 		buildCmd := exec.Command("sh", "-c", app.BuildCmd)
 		buildCmd.Dir = appDir
-		buildCmd.Stdout = logFile
-		buildCmd.Stderr = logFile
+		buildCmd.Stdout = buildOut
+		buildCmd.Stderr = buildOut
 		buildCmd.Env = m.buildEnv(app.ID, port)
 		if err := buildCmd.Run(); err != nil {
-			fmt.Fprintf(logFile, "=== Build failed: %v ===\n", err)
+			fmt.Fprintf(buildOut, "=== Build failed: %v ===\n", err)
 			logFile.Close()
 			return nil, fmt.Errorf("build command failed: %w", err)
 		}
-		fmt.Fprintf(logFile, "=== Build complete ===\n")
+		fmt.Fprintf(buildOut, "=== Build complete ===\n")
 	}
 
 	if strings.TrimSpace(app.StartCmd) == "" {
@@ -253,37 +260,54 @@ health check configured and is currently running, the restart is
 zero-downtime: the new process starts on a standby port, traffic is
 switched only after the health check passes, and the old process is
 stopped last. Without a health check it falls back to stop+start.
+
+deployLog, when non-nil, receives stage progress and build output so
+callers can surface a live view of the deploy. Pass nil when nobody is
+watching.
 */
-func (m *Manager) DeployRestart(app *db.App) error {
+func (m *Manager) DeployRestart(app *db.App, deployLog io.Writer) error {
 	if app.HealthPath == "" || !m.IsRunning(app.ID) {
 		if m.IsRunning(app.ID) {
+			logStage(deployLog, "Stopping current process")
 			if err := m.StopApp(app.ID); err != nil {
 				return err
 			}
 		}
-		return m.StartApp(app)
+		logStage(deployLog, "Starting on port %d", app.Port)
+		return m.startApp(app, true, deployLog)
 	}
-	return m.zeroDowntimeRestart(app)
+	return m.zeroDowntimeRestart(app, deployLog)
 }
 
-func (m *Manager) zeroDowntimeRestart(app *db.App) error {
+// logStage writes a deploy progress line, tolerating a nil writer.
+func logStage(w io.Writer, format string, args ...interface{}) {
+	if w == nil {
+		return
+	}
+	fmt.Fprintf(w, "=== "+format+" ===\n", args...)
+}
+
+func (m *Manager) zeroDowntimeRestart(app *db.App, deployLog io.Writer) error {
 	oldPort := app.EffectivePort()
 	newPort := app.Port
 	if newPort == oldPort {
 		newPort = app.Port + standbyOffset
 	}
 
-	p, err := m.launch(app, newPort, true)
+	logStage(deployLog, "Starting new process on standby port %d", newPort)
+	p, err := m.launch(app, newPort, true, deployLog)
 	if err != nil {
 		return err
 	}
 
+	logStage(deployLog, "Waiting for health check on %s", app.HealthPath)
 	if err := waitHealthy(newPort, app.HealthPath, p.done); err != nil {
 		signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
 		return fmt.Errorf("new process failed health check, old process still serving: %w", err)
 	}
 
 	// The new process is healthy: switch traffic, then retire the old one.
+	logStage(deployLog, "Healthy, switching traffic to port %d", newPort)
 	if m.switchRoutes != nil {
 		if err := m.switchRoutes(app.ID, newPort); err != nil {
 			signalGroup(p.cmd.Process.Pid, syscall.SIGKILL)
@@ -308,6 +332,7 @@ func (m *Manager) zeroDowntimeRestart(app *db.App) error {
 	go m.watchProcess(app.ID, p)
 
 	if old != nil {
+		logStage(deployLog, "Stopping old process")
 		stopProc(old)
 	}
 
@@ -372,7 +397,7 @@ func (m *Manager) RestoreRunning() error {
 		// Skip the build on restore: a reboot shouldn't re-run every
 		// app's npm install. Builds happen on deploy, pull, and
 		// explicit start/restart.
-		if err := m.startApp(&a, false); err != nil {
+		if err := m.startApp(&a, false, nil); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to restore app %s: %v\n", app.Name, err)
 		}
 	}
@@ -489,7 +514,7 @@ func (m *Manager) handleCrash(appID string, p *proc) {
 		if app.Status != "restarting" {
 			return // user intervened (stopped or started it manually)
 		}
-		if err := m.startApp(app, false); err != nil {
+		if err := m.startApp(app, false, nil); err != nil {
 			db.UpdateAppStatus(m.database, appID, "crashed", sql.NullInt64{})
 		}
 	})

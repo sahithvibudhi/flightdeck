@@ -34,6 +34,9 @@ type AppsHandler struct {
 	deployMu      sync.Mutex
 	deploying     map[string]bool
 	pendingDeploy map[string]string
+
+	// Live deploy output, keyed by deployment id (see deploy_logs.go).
+	deployLogs *deployLogHub
 }
 
 func NewAppsHandler(database *sql.DB, pm *process.Manager, dataDir string) *AppsHandler {
@@ -43,6 +46,7 @@ func NewAppsHandler(database *sql.DB, pm *process.Manager, dataDir string) *Apps
 		dataDir:       dataDir,
 		deploying:     make(map[string]bool),
 		pendingDeploy: make(map[string]string),
+		deployLogs:    newDeployLogHub(),
 	}
 }
 

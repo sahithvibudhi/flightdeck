@@ -79,20 +79,32 @@ func (h *AppsHandler) startDeploy(app *db.App, trigger, resetSHA string) (depID 
 func (h *AppsHandler) executeDeploy(app *db.App, depID, resetSHA string) {
 	var detail, commitLine string
 
+	// Everything the pipeline prints is watchable live and stored with
+	// the deployment afterwards.
+	logBuf := h.deployLogs.start(depID)
+	finishLog := func() {
+		db.SetDeploymentLog(h.database, depID, logBuf.text())
+		h.deployLogs.finish(depID)
+	}
+
 	recordCommit := func() {
 		if sha, msg, err := git.Head(h.appDir(app)); err == nil {
 			db.SetDeploymentCommit(h.database, depID, sha, msg)
 			commitLine = sha[:7] + " " + msg
+			fmt.Fprintf(logBuf, "=== At commit %s ===\n", commitLine)
 		}
 	}
 
 	failed := func(msg string) {
+		fmt.Fprintf(logBuf, "=== Deploy failed: %s ===\n", msg)
+		finishLog()
 		db.FinishDeployment(h.database, depID, "failed", msg)
 		notify.Go(h.database, "Deploy failed: "+app.Name, strings.TrimSpace(commitLine+"\n"+msg))
 	}
 
 	switch {
 	case resetSHA != "":
+		fmt.Fprintf(logBuf, "=== Rolling back to %.7s ===\n", resetSHA)
 		if err := git.Reset(h.appDir(app), resetSHA); err != nil {
 			failed(err.Error())
 			h.finishAndRunPending(app.ID)
@@ -100,22 +112,28 @@ func (h *AppsHandler) executeDeploy(app *db.App, depID, resetSHA string) {
 		}
 		recordCommit()
 	case app.RepoURL.Valid:
+		fmt.Fprintf(logBuf, "=== Pulling %s ===\n", app.RepoURL.String)
 		out, err := git.Pull(h.appDir(app), h.gitToken())
 		if err != nil {
 			failed(err.Error())
 			h.finishAndRunPending(app.ID)
 			return
 		}
+		if out = strings.TrimSpace(out); out != "" {
+			fmt.Fprintln(logBuf, out)
+		}
 		detail = out
 		recordCommit()
 	}
 
-	if err := h.pm.DeployRestart(app); err != nil {
+	if err := h.pm.DeployRestart(app, logBuf); err != nil {
 		failed(strings.TrimSpace(detail + "\n" + err.Error()))
 		h.finishAndRunPending(app.ID)
 		return
 	}
 
+	fmt.Fprintln(logBuf, "=== Deploy complete ===")
+	finishLog()
 	db.FinishDeployment(h.database, depID, "success", detail)
 	notify.Go(h.database, "Deploy succeeded: "+app.Name, strings.TrimSpace(commitLine))
 	h.finishAndRunPending(app.ID)

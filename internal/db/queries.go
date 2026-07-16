@@ -235,6 +235,7 @@ type Deployment struct {
 	Detail      string
 	CommitSHA   string
 	CommitMsg   string
+	Log         string
 	StartedAt   string
 	FinishedAt  sql.NullString
 }
@@ -280,6 +281,27 @@ func ListDeployments(db *sql.DB, appID string, limit int) ([]Deployment, error) 
 		deps = append(deps, d)
 	}
 	return deps, rows.Err()
+}
+
+// GetDeployment fetches one deployment scoped to an app, including the
+// stored deploy log (which ListDeployments deliberately omits to keep
+// list payloads small).
+func GetDeployment(db *sql.DB, appID, depID string) (*Deployment, error) {
+	var d Deployment
+	err := db.QueryRow(
+		`SELECT id, app_id, triggered_by, status, detail, commit_sha, commit_msg, log, started_at, finished_at
+		 FROM deployments WHERE id = ? AND app_id = ?`,
+		depID, appID,
+	).Scan(&d.ID, &d.AppID, &d.TriggeredBy, &d.Status, &d.Detail, &d.CommitSHA, &d.CommitMsg, &d.Log, &d.StartedAt, &d.FinishedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+func SetDeploymentLog(db *sql.DB, id, log string) error {
+	_, err := db.Exec(`UPDATE deployments SET log = ? WHERE id = ?`, log, id)
+	return err
 }
 
 type Domain struct {
