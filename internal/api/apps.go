@@ -34,6 +34,9 @@ type AppsHandler struct {
 	deployMu      sync.Mutex
 	deploying     map[string]bool
 	pendingDeploy map[string]string
+
+	// Live deploy output, keyed by deployment id (see deploy_logs.go).
+	deployLogs *deployLogHub
 }
 
 func NewAppsHandler(database *sql.DB, pm *process.Manager, dataDir string) *AppsHandler {
@@ -43,6 +46,7 @@ func NewAppsHandler(database *sql.DB, pm *process.Manager, dataDir string) *Apps
 		dataDir:       dataDir,
 		deploying:     make(map[string]bool),
 		pendingDeploy: make(map[string]string),
+		deployLogs:    newDeployLogHub(),
 	}
 }
 
@@ -90,6 +94,9 @@ type appResponse struct {
 	CPU           float64  `json:"cpu_percent"`
 	Memory        float64  `json:"memory_mb"`
 	CreatedAt     string   `json:"created_at"`
+	// Latest deployment, if any, so lists can show recency at a glance.
+	LastDeployAt     string `json:"last_deploy_at,omitempty"`
+	LastDeployStatus string `json:"last_deploy_status,omitempty"`
 }
 
 func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
@@ -125,6 +132,10 @@ func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
 	}
 	if a.Branch.Valid {
 		resp.Branch = &a.Branch.String
+	}
+	if dep, err := db.LatestDeployment(h.database, a.ID); err == nil && dep != nil {
+		resp.LastDeployAt = dep.StartedAt
+		resp.LastDeployStatus = dep.Status
 	}
 	return resp
 }

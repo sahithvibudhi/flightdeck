@@ -50,6 +50,8 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string) *chi.Mux {
 			r.Post("/apps/{id}/deploy", appsHandler.DeployNow)
 			r.Get("/apps/{id}/deployments", appsHandler.ListDeployments)
 			r.Post("/apps/{id}/deployments/{depID}/rollback", appsHandler.Rollback)
+			r.Get("/apps/{id}/deployments/{depID}/logs", appsHandler.DeploymentLogs)
+			r.Get("/apps/{id}/deployments/{depID}/logs/stream", appsHandler.DeploymentLogsStream)
 			r.Get("/apps/{id}/logs", appsHandler.Logs)
 			r.Get("/apps/{id}/logs/stream", appsHandler.LogsStream)
 

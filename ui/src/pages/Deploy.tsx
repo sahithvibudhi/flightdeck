@@ -1,19 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  createApp, startApp, getAppLogs, getSystemInfo, uploadZip,
+  createApp, updateApp, startApp, streamAppLogs, getAppLogs, getSystemInfo, uploadZip,
   errMsg, findInvalidEnv,
   type App, type EnvVar, type SystemInfo,
   replaceEnvs,
 } from '../api';
 import { FolderIcon, UploadIcon, GitHubIcon, EyeIcon, EyeOffIcon } from '../components/Icons';
+import { parseEnvText, mergeEnvs } from '../lib/env';
+import { toast } from '../components/toastBus';
+import Layout from '../components/Layout';
+import LogViewer from '../components/LogViewer';
 
 type SourceType = 'path' | 'upload' | 'github';
 type DeployPhase = 'form' | 'deploying' | 'running' | 'error';
 
 export default function Deploy() {
   const navigate = useNavigate();
-  const logRef = useRef<HTMLDivElement>(null);
   const [system, setSystem] = useState<SystemInfo | null>(null);
 
   const [phase, setPhase] = useState<DeployPhase>('form');
@@ -37,27 +40,42 @@ export default function Deploy() {
 
   const [createdApp, setCreatedApp] = useState<App | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const logStreamRef = useRef<EventSource | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     getSystemInfo().then(setSystem).catch(() => { /* transient */ });
   }, []);
 
+  /*
+  Once the app exists its output streams over SSE, and stays streaming
+  through the "running" screen so late startup crashes are visible.
+  Falls back to polling when the stream can't connect.
+  */
   useEffect(() => {
-    if (phase !== 'deploying' || !createdApp) return;
-    const interval = setInterval(async () => {
-      try {
-        const res = await getAppLogs(createdApp.id);
-        setLogs(res.lines);
-      } catch { /* transient */ }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [phase, createdApp]);
-
-  useEffect(() => {
-    if (logRef.current) {
-      logRef.current.scrollTop = logRef.current.scrollHeight;
-    }
-  }, [logs]);
+    if (!createdApp) return;
+    const source = streamAppLogs(createdApp.id);
+    logStreamRef.current = source;
+    source.onmessage = e => {
+      setLogs(prev => [...prev.slice(-499), e.data]);
+    };
+    source.onerror = () => {
+      source.close();
+      if (!pollRef.current) {
+        pollRef.current = setInterval(async () => {
+          try {
+            const res = await getAppLogs(createdApp.id);
+            setLogs(res.lines);
+          } catch { /* transient */ }
+        }, 2000);
+      }
+    };
+    return () => {
+      source.close();
+      if (pollRef.current) clearInterval(pollRef.current);
+      pollRef.current = null;
+    };
+  }, [createdApp]);
 
   function inferName(url: string) {
     const parts = url.replace(/\.git$/, '').split('/');
@@ -85,6 +103,18 @@ export default function Deploy() {
     setEnvs([...envs, { key: '', value: '' }]);
   }
 
+  function importEnvText() {
+    const text = window.prompt('Paste .env contents (KEY=VALUE lines):');
+    if (!text) return;
+    const imported = parseEnvText(text);
+    if (imported.length === 0) {
+      toast('No KEY=VALUE lines found in the pasted text', 'error');
+      return;
+    }
+    setEnvs(mergeEnvs(envs, imported));
+    toast(`Imported ${imported.length} variable${imported.length === 1 ? '' : 's'}`);
+  }
+
   function updateEnv(index: number, field: 'key' | 'value', val: string) {
     const updated = [...envs];
     updated[index] = { ...updated[index], [field]: val };
@@ -110,55 +140,68 @@ export default function Deploy() {
   async function handleDeploy() {
     setError('');
     setPhase('deploying');
-    setLogs(['Deploying...']);
+    setLogs([]);
 
     try {
-      const payload: Parameters<typeof createApp>[0] = {
-        name,
-        start_command: startCmd,
-      };
-      if (buildCmd) {
-        payload.build_command = buildCmd;
-      }
-      if (appPort) {
-        payload.port = parseInt(appPort, 10);
-      }
-      if (source === 'github' && repoUrl) {
-        payload.repo_url = repoUrl;
-        payload.branch = branch || 'main';
-      }
-      if (source === 'path' && workDir) {
-        payload.work_dir = workDir;
-      }
-      if (healthPath) {
-        payload.health_path = healthPath;
-      }
-
-      const app = await createApp(payload);
-      setCreatedApp(app);
-      setLogs(prev => [...prev, `App created on port ${app.port}`]);
-
-      if (source === 'upload' && zipFile) {
-        setLogs(prev => [...prev, 'Uploading zip file...']);
-        await uploadZip(app.id, zipFile);
-        setLogs(prev => [...prev, 'Zip extracted']);
-      }
-
       const validEnvs = envs.filter(e => e.key.trim() !== '');
       const invalidEnv = findInvalidEnv(validEnvs);
       if (invalidEnv) {
         throw new Error(invalidEnv);
       }
-      if (validEnvs.length > 0) {
-        await replaceEnvs(app.id, validEnvs);
-        setLogs(prev => [...prev, `Set ${validEnvs.length} environment variable(s)`]);
+
+      /*
+      Retrying after a failure must not create a duplicate: if the app
+      was already created, sync the (possibly corrected) form values
+      onto it instead of creating another one.
+      */
+      let app = createdApp;
+      if (app) {
+        app = await updateApp(app.id, {
+          name,
+          start_command: startCmd,
+          build_command: buildCmd,
+          port: appPort ? parseInt(appPort, 10) : undefined,
+          health_path: healthPath,
+        });
+        setCreatedApp(app);
+      } else {
+        const payload: Parameters<typeof createApp>[0] = {
+          name,
+          start_command: startCmd,
+        };
+        if (buildCmd) {
+          payload.build_command = buildCmd;
+        }
+        if (appPort) {
+          payload.port = parseInt(appPort, 10);
+        }
+        if (source === 'github' && repoUrl) {
+          payload.repo_url = repoUrl;
+          payload.branch = branch || 'main';
+        }
+        if (source === 'path' && workDir) {
+          payload.work_dir = workDir;
+        }
+        if (healthPath) {
+          payload.health_path = healthPath;
+        }
+
+        app = await createApp(payload);
+        setCreatedApp(app);
       }
 
-      setLogs(prev => [...prev, 'Starting process...']);
+      if (source === 'upload' && zipFile) {
+        await uploadZip(app.id, zipFile);
+      }
+
+      if (validEnvs.length > 0) {
+        await replaceEnvs(app.id, validEnvs);
+      }
+
       await startApp(app.id);
       setPhase('running');
     } catch (err) {
-      setLogs(prev => [...prev, `Error: ${errMsg(err)}`]);
+      setError(errMsg(err));
       setPhase('error');
     }
   }
@@ -167,17 +210,16 @@ export default function Deploy() {
 
   if (phase !== 'form') {
     return (
-      <div className="layout">
-        <nav className="nav">
-          <div className="nav-left">
-            <Link to="/" className="nav-brand">flightdeck</Link>
-          </div>
-        </nav>
+      <Layout title="New app">
         <div className="deploy-state fade-in">
           <div className="deploy-state-name">{name}</div>
 
-          <div className="deploy-state-log" ref={logRef}>
-            {logs.join('\n')}
+          <div style={{ width: '100%' }}>
+            <LogViewer
+              lines={logs}
+              filename={`${name || 'deploy'}.log`}
+              emptyText={phase === 'deploying' ? 'Setting up the app...' : 'No output yet'}
+            />
           </div>
 
           {phase === 'running' && (
@@ -186,18 +228,22 @@ export default function Deploy() {
                 <span className="deploy-state-status-dot" style={{ background: 'var(--success)' }} />
                 running
               </div>
-              {createdApp && system?.server_ip && (
-                <p className="deploy-state-url">
-                  Your app is live at{' '}
-                  <a href={`http://${system.server_ip}:${createdApp.url_port}`} target="_blank" rel="noreferrer">
-                    http://{system.server_ip}:{createdApp.url_port}
-                  </a>
-                </p>
+              {createdApp && (
+                system?.server_ip ? (
+                  <p className="deploy-state-url">
+                    Your app is live at{' '}
+                    <a href={`http://${system.server_ip}:${createdApp.url_port}`} target="_blank" rel="noreferrer">
+                      http://{system.server_ip}:{createdApp.url_port}
+                    </a>
+                  </p>
+                ) : (
+                  <p className="deploy-state-url">Your app is live on port {createdApp.url_port}</p>
+                )
               )}
               <div className="deploy-state-actions">
-                <Link to="/" className="btn btn-primary" style={{ textDecoration: 'none' }}>Go to dashboard</Link>
+                <Link to="/" className="btn btn-primary">Go to dashboard</Link>
                 {createdApp && (
-                  <Link to={`/apps/${createdApp.id}`} className="btn btn-secondary" style={{ textDecoration: 'none' }}>Configure domain</Link>
+                  <Link to={`/apps/${createdApp.id}`} className="btn btn-secondary">Configure domain</Link>
                 )}
               </div>
             </>
@@ -209,8 +255,16 @@ export default function Deploy() {
                 <span className="deploy-state-status-dot" style={{ background: 'var(--error)' }} />
                 <span style={{ color: 'var(--error)' }}>error</span>
               </div>
+              <p className="error-msg" style={{ maxWidth: 480, textAlign: 'center' }}>{error}</p>
               <div className="deploy-state-actions">
-                <button className="btn btn-primary" onClick={() => setPhase('form')}>Try again</button>
+                <button className="btn btn-primary" onClick={() => setPhase('form')}>
+                  Fix and retry
+                </button>
+                {createdApp && (
+                  <Link to={`/apps/${createdApp.id}`} className="btn btn-secondary">
+                    Open the app page
+                  </Link>
+                )}
               </div>
             </>
           )}
@@ -221,17 +275,12 @@ export default function Deploy() {
             </div>
           )}
         </div>
-      </div>
+      </Layout>
     );
   }
 
   return (
-    <div className="layout">
-      <nav className="nav">
-        <div className="nav-left">
-          <Link to="/" className="nav-brand">flightdeck</Link>
-        </div>
-      </nav>
+    <Layout title="New app">
       <div className="deploy-wizard fade-in">
         <button className="deploy-back" onClick={() => navigate('/')}>
           ← Back
@@ -285,7 +334,9 @@ export default function Deploy() {
               onDrop={e => {
                 e.preventDefault();
                 const f = e.dataTransfer.files[0];
-                if (f && f.name.endsWith('.zip')) setZipFile(f);
+                if (!f) return;
+                if (f.name.endsWith('.zip')) setZipFile(f);
+                else toast('Only .zip files can be uploaded', 'error');
               }}
             >
               {zipFile ? (
@@ -332,7 +383,7 @@ export default function Deploy() {
           </div>
         )}
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+        <hr className="form-divider" />
 
         <div className="form-group">
           <label htmlFor="deploy-name">App name</label>
@@ -356,23 +407,23 @@ export default function Deploy() {
             placeholder="node server.js"
           />
           {installed.length > 0 && (
-            <p className="form-hint">Available: {installed.map(r => r.name.toLowerCase()).join(', ')}</p>
+            <p className="form-hint">Installed runtimes: {installed.map(r => r.name.toLowerCase()).join(', ')}</p>
           )}
         </div>
 
         <div className="form-group">
-          <label htmlFor="deploy-port">Port <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
+          <label htmlFor="deploy-port">Port <span className="label-optional">(optional)</span></label>
           <input
             id="deploy-port"
             value={appPort}
             onChange={e => setAppPort(e.target.value.replace(/\D/g, ''))}
-            placeholder="Auto-assigned if empty (e.g. 3000, 8080)"
+            placeholder="Auto-assigned if empty"
           />
           <p className="form-hint">The port your app listens on. Leave empty to auto-assign.</p>
         </div>
 
         <div className="form-group">
-          <label htmlFor="deploy-build">Build command <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
+          <label htmlFor="deploy-build">Build command <span className="label-optional">(optional)</span></label>
           <input
             id="deploy-build"
             value={buildCmd}
@@ -383,7 +434,7 @@ export default function Deploy() {
         </div>
 
         <div className="form-group">
-          <label htmlFor="deploy-health">Health check path <span style={{ color: 'var(--text-tertiary)', fontWeight: 400 }}>(optional)</span></label>
+          <label htmlFor="deploy-health">Health check path <span className="label-optional">(optional)</span></label>
           <input
             id="deploy-health"
             value={healthPath}
@@ -401,39 +452,46 @@ export default function Deploy() {
           {showEnvs && (
             <div className="fade-in" style={{ marginTop: 12 }}>
               {envs.map((env, i) => {
-
                 const visible = shownEnvValues.has(i);
                 return (
-                <div key={i} className="env-row">
-                  <input
-                    placeholder="KEY"
-                    value={env.key}
-                    onChange={e => updateEnv(i, 'key', e.target.value)}
-                    style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                  />
-                  <input
-                    placeholder="value"
-                    value={env.value}
-                    type={visible ? 'text' : 'password'}
-                    onChange={e => updateEnv(i, 'value', e.target.value)}
-                    style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}
-                  />
-                  <button
-                    type = "button"
-                    className = "btn btn-ghost btn-sm btn-icon"
-                    onClick ={() => toggleEnvVisibility(i)}
-                    title = {visible ? 'Hide value' : 'Show value'} >
-                      {visible ? <EyeOffIcon/> : <EyeIcon/>}
-                  </button>
-
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEnvRow(i)} style={{ flexShrink: 0 }}>
-                    ×
-                  </button>
-                </div>);
+                  <div key={i} className="env-row">
+                    <input
+                      placeholder="KEY"
+                      aria-label="Variable name"
+                      value={env.key}
+                      onChange={e => updateEnv(i, 'key', e.target.value)}
+                    />
+                    <input
+                      placeholder="value"
+                      aria-label="Variable value"
+                      value={env.value}
+                      type={visible ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      onChange={e => updateEnv(i, 'value', e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm btn-icon"
+                      onClick={() => toggleEnvVisibility(i)}
+                      aria-label={visible ? 'Hide value' : 'Show value'}
+                      title={visible ? 'Hide value' : 'Show value'}
+                    >
+                      {visible ? <EyeOffIcon /> : <EyeIcon />}
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeEnvRow(i)} style={{ flexShrink: 0 }}>
+                      Remove
+                    </button>
+                  </div>
+                );
               })}
-              <button type="button" className="btn-text" onClick={addEnvRow} style={{ marginTop: envs.length > 0 ? 8 : 0 }}>
-                + Add variable
-              </button>
+              <div className="flex gap-sm" style={{ marginTop: envs.length > 0 ? 8 : 0 }}>
+                <button type="button" className="btn-text" onClick={addEnvRow}>
+                  + Add variable
+                </button>
+                <button type="button" className="btn-text" onClick={importEnvText}>
+                  Paste .env
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -446,6 +504,6 @@ export default function Deploy() {
           </button>
         </div>
       </div>
-    </div>
+    </Layout>
   );
 }

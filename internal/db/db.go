@@ -71,6 +71,7 @@ var migrations = []string{
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		last_used  DATETIME
 	)`,
+	`ALTER TABLE deployments ADD COLUMN log TEXT DEFAULT ''`,
 }
 
 func Open(path string) (*sql.DB, error) {

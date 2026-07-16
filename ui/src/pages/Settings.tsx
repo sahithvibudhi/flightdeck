@@ -1,5 +1,4 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import {
   getSettings, updatePanelDomain, changePassword,
   updateGitToken, getSystemInfo, installRuntime,
@@ -9,18 +8,24 @@ import {
   type Settings as SettingsType, type SystemInfo, type ApiToken,
 } from '../api';
 import { toast } from '../components/toastBus';
+import { relativeTime, exactTime } from '../lib/time';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Layout from '../components/Layout';
 
 export default function Settings() {
   const [settings, setSettings] = useState<SettingsType | null>(null);
   const [system, setSystem] = useState<SystemInfo | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [domain, setDomain] = useState('');
   const [gitToken, setGitToken] = useState('');
   const [currentPw, setCurrentPw] = useState('');
   const [newPw, setNewPw] = useState('');
-  const [error, setError] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwError, setPwError] = useState('');
   const [installing, setInstalling] = useState<string | null>(null);
+  const [installOutput, setInstallOutput] = useState<{ name: string; output: string } | null>(null);
   const [replacingToken, setReplacingToken] = useState(false);
+  const [confirmingTokenRemoval, setConfirmingTokenRemoval] = useState(false);
   const [notifyDiscord, setNotifyDiscord] = useState('');
   const [notifyTgToken, setNotifyTgToken] = useState('');
   const [notifyTgChat, setNotifyTgChat] = useState('');
@@ -32,7 +37,6 @@ export default function Settings() {
   const [newToken, setNewToken] = useState('');
   const [tokenCopied, setTokenCopied] = useState(false);
   const [deletingToken, setDeletingToken] = useState<ApiToken | null>(null);
-  const location = useLocation();
 
   useEffect(() => { loadAll(); }, []);
 
@@ -47,59 +51,56 @@ export default function Settings() {
       setNotifyTgToken(s.notify_telegram_token || '');
       setNotifyTgChat(s.notify_telegram_chat || '');
       setNotifyWebhook(s.notify_webhook || '');
-    } catch { /* transient */ }
-  }
-
-  function flash(message: string) {
-    setError('');
-    toast(message);
+      setLoaded(true);
+    } catch { /* transient; the offline banner covers hard failures */ }
   }
 
   async function handleDomain(e: FormEvent) {
     e.preventDefault();
-    setError('');
     try {
       await updatePanelDomain(domain.trim().toLowerCase());
-      flash('Domain updated');
+      toast('Domain updated');
     } catch (err) {
-      setError(errMsg(err));
+      toast(errMsg(err), 'error');
     }
   }
 
   async function handleGitToken(e: FormEvent) {
     e.preventDefault();
-    setError('');
     try {
       await updateGitToken(gitToken);
       setGitToken('');
       setReplacingToken(false);
       await loadAll();
-      flash('Git token updated');
+      toast('Git token updated');
     } catch (err) {
-      setError(errMsg(err));
+      toast(errMsg(err), 'error');
     }
   }
 
   async function handleRemoveToken() {
-    setError('');
+    setConfirmingTokenRemoval(false);
     try {
       await updateGitToken('');
       await loadAll();
-      flash('Git token removed');
+      toast('Git token removed');
     } catch (err) {
-      setError(errMsg(err));
+      toast(errMsg(err), 'error');
     }
   }
 
   async function handleInstall(name: string) {
     setInstalling(name);
-    setError('');
+    setInstallOutput(null);
     try {
-      await installRuntime(name);
-      flash(`${name} installed successfully`);
+      const res = await installRuntime(name);
+      toast(`${name} installed`);
+      if (res.output?.trim()) {
+        setInstallOutput({ name, output: res.output.trim() });
+      }
       await loadAll();
     } catch (err) {
-      setError(errMsg(err));
+      toast(errMsg(err), 'error');
     } finally {
       setInstalling(null);
     }
@@ -107,7 +108,6 @@ export default function Settings() {
 
   async function handleNotifications(e: FormEvent) {
     e.preventDefault();
-    setError('');
     try {
       await updateNotifications({
         discord: notifyDiscord,
@@ -115,35 +115,33 @@ export default function Settings() {
         telegram_chat: notifyTgChat,
         webhook: notifyWebhook,
       });
-      flash('Notification settings saved');
+      toast('Notification settings saved');
     } catch (err) {
-      setError(errMsg(err));
+      toast(errMsg(err), 'error');
     }
   }
 
   async function handleCreateToken(e: FormEvent) {
     e.preventDefault();
-    setError('');
     try {
       const created = await createApiToken(tokenName.trim(), tokenScope);
       setNewToken(created.token);
       setTokenCopied(false);
       setTokenName('');
       setApiTokens(await listApiTokens());
-      flash(`Token "${created.name}" created`);
+      toast(`Token "${created.name}" created`);
     } catch (err) {
-      setError(errMsg(err));
+      toast(errMsg(err), 'error');
     }
   }
 
   async function handleTestNotifications() {
-    setError('');
     setTestingNotify(true);
     try {
       await testNotifications();
-      flash('Test notification sent');
+      toast('Test sent to the configured channels. Check that it arrived.');
     } catch (err) {
-      setError(errMsg(err));
+      toast(errMsg(err), 'error');
     } finally {
       setTestingNotify(false);
     }
@@ -153,13 +151,12 @@ export default function Settings() {
     if (!deletingToken) return;
     const target = deletingToken;
     setDeletingToken(null);
-    setError('');
     try {
       await deleteApiToken(target.id);
       setApiTokens(await listApiTokens());
-      flash(`Token "${target.name}" deleted`);
+      toast(`Token "${target.name}" deleted`);
     } catch (err) {
-      setError(errMsg(err));
+      toast(errMsg(err), 'error');
     }
   }
 
@@ -169,43 +166,56 @@ export default function Settings() {
       setTokenCopied(true);
       setTimeout(() => setTokenCopied(false), 2000);
     } catch {
-      setError('Could not copy the token, copy it manually');
+      toast('Could not copy the token, copy it manually', 'error');
     }
   }
 
   async function handlePassword(e: FormEvent) {
     e.preventDefault();
-    setError('');
+    setPwError('');
+    if (newPw.length < 8) {
+      setPwError('New password must be at least 8 characters');
+      return;
+    }
+    if (newPw !== confirmPw) {
+      setPwError('New passwords do not match');
+      return;
+    }
     try {
       await changePassword(currentPw, newPw);
       setCurrentPw('');
       setNewPw('');
-      flash('Password updated');
+      setConfirmPw('');
+      toast('Password updated');
     } catch (err) {
-      setError(errMsg(err));
+      setPwError(errMsg(err));
     }
   }
 
-  return (
-    <div className="layout">
-      <nav className="nav">
-        <div className="nav-left">
-          <Link to="/" className="nav-brand">flightdeck</Link>
-          <div className="nav-links">
-            <Link to="/" className="nav-link">Apps</Link>
-            <Link to="/settings" className={`nav-link ${location.pathname === '/settings' ? 'nav-link-active' : ''}`}>Settings</Link>
+  if (!loaded) {
+    return (
+      <Layout title="Settings">
+        <div className="container">
+          <h1>Settings</h1>
+          <div className="settings-grid">
+            {[0, 1, 2].map(i => <div key={i} className="skeleton" style={{ height: 180 }} />)}
           </div>
         </div>
-      </nav>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout title="Settings">
       <div className="container fade-in">
         <h1>Settings</h1>
 
-        {error && <p className="error-msg" style={{ marginBottom: 16 }}>{error}</p>}
-
         <div className="settings-grid">
+          <span className="settings-group-title">System</span>
+
           {system && (
             <div className="card">
-              <h2>System</h2>
+              <h2>Runtimes</h2>
               <div className="runtime-grid">
                 <div className={`runtime-card ${system.caddy.running ? '' : 'runtime-card-missing'}`}>
                   <div className="runtime-card-header">
@@ -248,11 +258,39 @@ export default function Settings() {
                   </div>
                 ))}
               </div>
+              {installing && (
+                <p className="form-hint mt-sm">
+                  Installing {installing}. This can take a few minutes; other installs are disabled meanwhile.
+                </p>
+              )}
+              {installOutput && (
+                <div className="mt-sm">
+                  <div className="flex-between">
+                    <span className="form-hint">Install output for {installOutput.name}</span>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setInstallOutput(null)}>Dismiss</button>
+                  </div>
+                  <div className="pull-output">{installOutput.output}</div>
+                </div>
+              )}
               <p className="form-hint mt-sm">
                 {system.os}/{system.arch}
               </p>
             </div>
           )}
+
+          <div className="card">
+            <h2>Control Panel Domain</h2>
+            <form onSubmit={handleDomain}>
+              <div className="form-group">
+                <label htmlFor="panel-domain">Domain</label>
+                <input id="panel-domain" value={domain} onChange={e => setDomain(e.target.value)} placeholder="admin.example.com" />
+                <p className="form-hint">Leave blank for IP-only access on the panel port</p>
+              </div>
+              <button type="submit" className="btn btn-primary btn-sm">Update domain</button>
+            </form>
+          </div>
+
+          <span className="settings-group-title">Integrations</span>
 
           <div className="card">
             <h2>Git Authentication</h2>
@@ -263,7 +301,7 @@ export default function Settings() {
                 </div>
                 <div className="flex gap-sm mt-sm">
                   <button className="btn btn-ghost btn-sm" onClick={() => { setGitToken(''); setReplacingToken(true); }}>Replace</button>
-                  <button className="btn btn-danger btn-sm" onClick={handleRemoveToken}>Remove token</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => setConfirmingTokenRemoval(true)}>Remove token</button>
                 </div>
               </div>
             ) : (
@@ -290,18 +328,6 @@ export default function Settings() {
           </div>
 
           <div className="card">
-            <h2>Control Panel Domain</h2>
-            <form onSubmit={handleDomain}>
-              <div className="form-group">
-                <label htmlFor="panel-domain">Domain</label>
-                <input id="panel-domain" value={domain} onChange={e => setDomain(e.target.value)} placeholder="admin.example.com" />
-                <p className="form-hint">Leave blank for IP-only access on :3000</p>
-              </div>
-              <button type="submit" className="btn btn-primary btn-sm">Update domain</button>
-            </form>
-          </div>
-
-          <div className="card">
             <h2>Notifications</h2>
             <p className="form-hint" style={{ marginBottom: 12 }}>
               Sent on deploy success, deploy failure, and app crashes. Leave a field blank to disable that channel.
@@ -313,7 +339,7 @@ export default function Settings() {
               </div>
               <div className="form-group">
                 <label htmlFor="notify-tg-token">Telegram bot token</label>
-                <input id="notify-tg-token" value={notifyTgToken} onChange={e => setNotifyTgToken(e.target.value)} placeholder="123456:ABC..." />
+                <input id="notify-tg-token" type="password" autoComplete="off" value={notifyTgToken} onChange={e => setNotifyTgToken(e.target.value)} placeholder="123456:ABC..." />
               </div>
               <div className="form-group">
                 <label htmlFor="notify-tg-chat">Telegram chat ID</label>
@@ -362,7 +388,11 @@ export default function Settings() {
                   <div style={{ flex: 1 }}>
                     <div>{t.name} <span className="form-hint" style={{ display: 'inline' }}>({t.scope})</span></div>
                     <p className="form-hint">
-                      Created {t.created_at} · {t.last_used ? `Last used ${t.last_used}` : 'Never used'}
+                      <span title={exactTime(t.created_at)}>Created {relativeTime(t.created_at)}</span>
+                      {' · '}
+                      {t.last_used
+                        ? <span title={exactTime(t.last_used)}>Last used {relativeTime(t.last_used)}</span>
+                        : 'Never used'}
                     </p>
                   </div>
                   <button className="btn btn-danger btn-sm" onClick={() => setDeletingToken(t)}>Delete</button>
@@ -392,22 +422,39 @@ export default function Settings() {
             </form>
           </div>
 
+          <span className="settings-group-title">Security</span>
+
           <div className="card">
             <h2>Change Password</h2>
             <form onSubmit={handlePassword}>
               <div className="form-group">
                 <label htmlFor="current-pw">Current password</label>
-                <input id="current-pw" type="password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} />
+                <input id="current-pw" type="password" autoComplete="current-password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} />
               </div>
               <div className="form-group">
                 <label htmlFor="new-pw">New password</label>
-                <input id="new-pw" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Minimum 8 characters" />
+                <input id="new-pw" type="password" autoComplete="new-password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Minimum 8 characters" />
               </div>
-              <button type="submit" className="btn btn-primary btn-sm">Update password</button>
+              <div className="form-group">
+                <label htmlFor="confirm-pw">Confirm new password</label>
+                <input id="confirm-pw" type="password" autoComplete="new-password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} />
+              </div>
+              {pwError && <p className="error-msg" style={{ marginBottom: 8 }}>{pwError}</p>}
+              <button type="submit" className="btn btn-primary btn-sm" disabled={!currentPw || !newPw || !confirmPw}>Update password</button>
             </form>
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmingTokenRemoval}
+        title="Remove git token?"
+        message="Pulls and deploys of private repositories will start failing until a new token is saved."
+        confirmLabel="Remove token"
+        danger
+        onConfirm={handleRemoveToken}
+        onCancel={() => setConfirmingTokenRemoval(false)}
+      />
 
       <ConfirmDialog
         open={deletingToken !== null}
@@ -418,6 +465,6 @@ export default function Settings() {
         onConfirm={handleDeleteToken}
         onCancel={() => setDeletingToken(null)}
       />
-    </div>
+    </Layout>
   );
 }

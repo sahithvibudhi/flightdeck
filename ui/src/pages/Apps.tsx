@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  listApps, clearToken, getSystemInfo, getServerMetrics, getSettings, createSampleApp, errMsg,
+  listApps, getSystemInfo, getServerMetrics, createSampleApp, errMsg,
   type App, type SystemInfo, type ServerMetricsHistory,
 } from '../api';
-import ConfirmDialog from '../components/ConfirmDialog';
+import { relativeTime, exactTime, parseTimestamp } from '../lib/time';
+import Layout from '../components/Layout';
 
 function repoShortName(url: string): string {
   return url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '');
@@ -23,6 +24,11 @@ function formatCapacity(usedMb: number, totalMb: number): { numbers: string; uni
   return { numbers: `${usedMb.toFixed(0)} / ${totalMb.toFixed(0)}`, unit: 'MB' };
 }
 
+function percentUsed(used: number, total: number): string {
+  if (total <= 0) return '';
+  return `${(used / total * 100).toFixed(0)}% used`;
+}
+
 function Sparkline({ data, max }: { data: number[]; max?: number }) {
   const ceil = max || Math.max(...data, 1);
   const bars = data.slice(-30);
@@ -39,16 +45,22 @@ function Sparkline({ data, max }: { data: number[]; max?: number }) {
   );
 }
 
+type SortKey = 'name' | 'status' | 'deployed';
+
+const statusRank: Record<string, number> = {
+  crashed: 0, error: 1, restarting: 2, deploying: 3, running: 4, stopped: 5,
+};
+
 export default function Apps() {
   const [apps, setApps] = useState<App[]>([]);
   const [system, setSystem] = useState<SystemInfo | null>(null);
   const [metrics, setMetrics] = useState<ServerMetricsHistory | null>(null);
-  const [initial, setInitial] = useState('');
-  const [confirmingLogout, setConfirmingLogout] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<SortKey>('name');
   const [sampleLoading, setSampleLoading] = useState(false);
   const [sampleError, setSampleError] = useState('');
   const navigate = useNavigate();
-  const location = useLocation();
 
   const loadAll = useCallback(async () => {
     await Promise.all([
@@ -56,19 +68,14 @@ export default function Apps() {
       getSystemInfo().then(setSystem).catch(() => { /* transient */ }),
       getServerMetrics().then(setMetrics).catch(() => { /* transient */ }),
     ]);
+    setLoaded(true);
   }, []);
 
   useEffect(() => {
     loadAll();
-    getSettings().then(s => setInitial(s.admin_username.charAt(0))).catch(() => { /* transient */ });
     const interval = setInterval(loadAll, 5000);
     return () => clearInterval(interval);
   }, [loadAll]);
-
-  function handleLogout() {
-    clearToken();
-    navigate('/login');
-  }
 
   async function handleDeploySample() {
     setSampleLoading(true);
@@ -83,23 +90,31 @@ export default function Apps() {
     }
   }
 
+  const visibleApps = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? apps.filter(a =>
+          a.name.toLowerCase().includes(q) ||
+          (a.repo_url || '').toLowerCase().includes(q) ||
+          a.domains.some(d => d.toLowerCase().includes(q)))
+      : apps;
+    return [...filtered].sort((a, b) => {
+      if (sort === 'status') {
+        return (statusRank[a.status] ?? 9) - (statusRank[b.status] ?? 9) || a.name.localeCompare(b.name);
+      }
+      if (sort === 'deployed') {
+        const ta = parseTimestamp(a.last_deploy_at || '')?.getTime() ?? 0;
+        const tb = parseTimestamp(b.last_deploy_at || '')?.getTime() ?? 0;
+        return tb - ta || a.name.localeCompare(b.name);
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [apps, query, sort]);
+
   const latest = metrics?.snapshots?.[metrics.snapshots.length - 1];
 
   return (
-    <div className="layout">
-      <nav className="nav">
-        <div className="nav-left">
-          <Link to="/" className="nav-brand">flightdeck</Link>
-          <div className="nav-links">
-            <Link to="/" className={`nav-link ${location.pathname === '/' ? 'nav-link-active' : ''}`}>Apps</Link>
-            <Link to="/settings" className="nav-link">Settings</Link>
-          </div>
-        </div>
-        <div className="nav-right">
-          <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>New app</Link>
-          <button className="nav-avatar" onClick={() => setConfirmingLogout(true)} title="Log out" aria-label="Log out">{initial || '?'}</button>
-        </div>
-      </nav>
+    <Layout>
       <div className="container">
 
         {system && !system.caddy.running && (
@@ -111,7 +126,11 @@ export default function Apps() {
           </div>
         )}
 
-        {latest && metrics && (
+        {!loaded ? (
+          <div className="server-overview">
+            {[0, 1, 2, 3].map(i => <div key={i} className="skeleton skeleton-stat" />)}
+          </div>
+        ) : latest && metrics && (
           <div className="server-overview fade-in">
             <div className="server-stat">
               <span className="server-stat-label">CPU</span>
@@ -121,13 +140,13 @@ export default function Apps() {
             <div className="server-stat">
               <span className="server-stat-label">Memory <span className="server-stat-unit-inline">{formatCapacity(latest.memory_used_mb, latest.memory_total_mb).unit}</span></span>
               <span className="server-stat-value">{formatCapacity(latest.memory_used_mb, latest.memory_total_mb).numbers}</span>
-              <span className="server-stat-pct">{(latest.memory_used_mb / latest.memory_total_mb * 100).toFixed(0)}% used</span>
+              <span className="server-stat-pct">{percentUsed(latest.memory_used_mb, latest.memory_total_mb)}</span>
               <Sparkline data={metrics.snapshots.map(s => s.memory_used_mb)} max={latest.memory_total_mb} />
             </div>
             <div className="server-stat">
               <span className="server-stat-label">Disk <span className="server-stat-unit-inline">{formatCapacity(latest.disk_used_mb, latest.disk_total_mb).unit}</span></span>
               <span className="server-stat-value">{formatCapacity(latest.disk_used_mb, latest.disk_total_mb).numbers}</span>
-              <span className="server-stat-pct">{(latest.disk_used_mb / latest.disk_total_mb * 100).toFixed(0)}% used</span>
+              <span className="server-stat-pct">{percentUsed(latest.disk_used_mb, latest.disk_total_mb)}</span>
               <Sparkline data={metrics.snapshots.map(s => s.disk_used_mb)} max={latest.disk_total_mb} />
             </div>
             <div className="server-stat">
@@ -135,12 +154,12 @@ export default function Apps() {
               <span className="server-stat-value">{apps.filter(a => a.status === 'running').length}<span className="server-stat-unit">/{apps.length}</span></span>
               {system && (
                 <div className="runtime-bar-items" style={{ marginTop: 4 }}>
-                  <span className={`runtime-pill ${system.caddy.running ? 'runtime-pill-ok' : 'runtime-pill-down'}`} style={{ fontSize: 10, padding: '0 6px' }}>
+                  <span className={`runtime-pill runtime-pill-compact ${system.caddy.running ? 'runtime-pill-ok' : 'runtime-pill-down'}`}>
                     <span className="runtime-dot" />
                     Caddy
                   </span>
                   {system.runtimes.filter(r => r.installed).map(r => (
-                    <span key={r.name} className="runtime-pill runtime-pill-ok" style={{ fontSize: 10, padding: '0 6px' }}>
+                    <span key={r.name} className="runtime-pill runtime-pill-compact runtime-pill-ok">
                       <span className="runtime-dot" />
                       {r.name}
                     </span>
@@ -152,72 +171,111 @@ export default function Apps() {
         )}
 
         <div className="page-header">
-          <span className="page-title">Deployments</span>
+          <span className="page-title">Apps</span>
+          {apps.length > 1 && (
+            <div className="flex-center gap-sm">
+              <input
+                type="search"
+                className="app-search"
+                placeholder="Search apps"
+                aria-label="Search apps"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+              />
+              <select
+                className="app-sort"
+                aria-label="Sort apps"
+                value={sort}
+                onChange={e => setSort(e.target.value as SortKey)}
+              >
+                <option value="name">Sort: name</option>
+                <option value="status">Sort: status</option>
+                <option value="deployed">Sort: last deploy</option>
+              </select>
+            </div>
+          )}
         </div>
 
-        {apps.length > 0 ? (
+        {!loaded ? (
           <div className="app-grid">
-            {apps.map(app => (
-              <Link to={`/apps/${app.id}`} key={app.id} className="app-card">
-                <div className="app-card-header">
-                  <span className="app-card-name">{app.name}</span>
-                  <span className={`badge badge-${app.status}`}>{app.status}</span>
-                </div>
-
-                <div className={`app-card-repo ${!app.repo_url ? 'app-card-repo-none' : ''}`}>
-                  {app.repo_url ? repoShortName(app.repo_url) : 'No repository'}
-                </div>
-
-                <div className="app-card-metrics">
-                  <div className="app-card-metric">
-                    <span className="app-card-metric-value">
-                      {app.status === 'running' ? `${app.cpu_percent}%` : '—'}
-                    </span>
-                    <span className="app-card-metric-label">CPU</span>
-                  </div>
-                  <div className="app-card-metric">
-                    <span className="app-card-metric-value">
-                      {app.status === 'running' ? formatMemory(app.memory_mb) : '—'}
-                    </span>
-                    <span className="app-card-metric-label">Memory</span>
-                  </div>
-                  <div className="app-card-metric">
-                    <span className="app-card-metric-value">:{app.port}</span>
-                    <span className="app-card-metric-label">Port</span>
-                  </div>
-                </div>
-
-                {app.domains.length > 0 ? (
-                  <div className="app-card-domains">
-                    {app.domains.map(d => (
-                      <span
-                        key={d}
-                        className="app-card-domain app-card-domain-link"
-                        role="link"
-                        tabIndex={0}
-                        onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(`https://${d}`, '_blank'); }}
-                        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.open(`https://${d}`, '_blank'); } }}
-                      >
-                        {d}
-                      </span>
-                    ))}
-                  </div>
-                ) : (app.status === 'running' && system?.server_ip && (
-                  <div className="app-card-domains">
-                    <span
-                      className="app-card-domain app-card-domain-link"
-                      role="link"
-                      tabIndex={0}
-                      onClick={e => { e.preventDefault(); e.stopPropagation(); window.open(`http://${system.server_ip}:${app.url_port}`, '_blank'); }}
-                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); window.open(`http://${system.server_ip}:${app.url_port}`, '_blank'); } }}
-                    >
-                      {system.server_ip}:{app.url_port}
-                    </span>
-                  </div>
-                ))}
-              </Link>
-            ))}
+            {[0, 1, 2].map(i => <div key={i} className="skeleton skeleton-card" />)}
           </div>
+        ) : apps.length > 0 ? (
+          visibleApps.length > 0 ? (
+            <div className="app-grid">
+              {visibleApps.map(app => (
+                <div key={app.id} className="app-card">
+                  <div className="app-card-header">
+                    {/* Stretched link: the name anchor covers the card. */}
+                    <Link to={`/apps/${app.id}`} className="app-card-name app-card-link">{app.name}</Link>
+                    <span className={`badge badge-${app.status}`}>{app.status}</span>
+                  </div>
+
+                  <div className={`app-card-repo ${!app.repo_url ? 'app-card-repo-none' : ''}`}>
+                    {app.repo_url ? repoShortName(app.repo_url) : 'No repository'}
+                  </div>
+
+                  <div className="app-card-metrics">
+                    <div className="app-card-metric">
+                      <span className="app-card-metric-value">
+                        {app.status === 'running' ? `${app.cpu_percent}%` : '—'}
+                      </span>
+                      <span className="app-card-metric-label">CPU</span>
+                    </div>
+                    <div className="app-card-metric">
+                      <span className="app-card-metric-value">
+                        {app.status === 'running' ? formatMemory(app.memory_mb) : '—'}
+                      </span>
+                      <span className="app-card-metric-label">Memory</span>
+                    </div>
+                    <div className="app-card-metric">
+                      <span className="app-card-metric-value">:{app.url_port}</span>
+                      <span className="app-card-metric-label">Port</span>
+                    </div>
+                  </div>
+
+                  <div className="app-card-footer">
+                    {app.domains.length > 0 ? (
+                      <div className="app-card-domains">
+                        {app.domains.map(d => (
+                          <a
+                            key={d}
+                            className="app-card-domain app-card-domain-link"
+                            href={`https://${d}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {d}
+                          </a>
+                        ))}
+                      </div>
+                    ) : (app.status === 'running' && system?.server_ip ? (
+                      <div className="app-card-domains">
+                        <a
+                          className="app-card-domain app-card-domain-link"
+                          href={`http://${system.server_ip}:${app.url_port}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {system.server_ip}:{app.url_port}
+                        </a>
+                      </div>
+                    ) : <span />)}
+                    {app.last_deploy_at && (
+                      <span
+                        className={`app-card-deployed ${app.last_deploy_status === 'failed' ? 'app-card-deployed-failed' : ''}`}
+                        title={exactTime(app.last_deploy_at)}
+                      >
+                        {app.last_deploy_status === 'failed' ? 'failed deploy' : 'deployed'} {relativeTime(app.last_deploy_at)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="list-empty">No apps match "{query}".</p>
+          )
         ) : (
           <div className="empty-state">
             <p style={{ fontSize: 15, marginBottom: 8 }}>Your server is ready</p>
@@ -227,28 +285,19 @@ export default function Apps() {
               <li><span className="getting-started-num">2</span> Point a DNS record here and add the domain — SSL is automatic</li>
               <li><span className="getting-started-num">3</span> Paste the app's webhook URL into GitHub for push-to-deploy</li>
             </ol>
-            <Link to="/deploy" className="btn btn-primary btn-sm" style={{ textDecoration: 'none' }}>
+            <Link to="/deploy" className="btn btn-primary btn-sm">
               Deploy your first app
             </Link>
             <button className="btn btn-secondary btn-sm" style={{ marginTop: 12 }} onClick={handleDeploySample} disabled={sampleLoading}>
               {sampleLoading ? <span className="spinner" /> : 'Deploy a sample app instead'}
             </button>
             {sampleError && <p className="error-msg">{sampleError}</p>}
-            <Link to="/settings" className="btn-text" style={{ textDecoration: 'none', marginTop: 12, fontSize: 12 }}>
+            <Link to="/settings" className="btn-text" style={{ marginTop: 12, fontSize: 12 }}>
               or set up runtimes and tokens in Settings
             </Link>
           </div>
         )}
       </div>
-
-      <ConfirmDialog
-        open={confirmingLogout}
-        title="Log out?"
-        message="Your apps keep running — this only signs you out of the dashboard."
-        confirmLabel="Log out"
-        onConfirm={handleLogout}
-        onCancel={() => setConfirmingLogout(false)}
-      />
-    </div>
+    </Layout>
   );
 }

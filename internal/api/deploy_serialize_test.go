@@ -77,4 +77,16 @@ func TestRunDeploy_IndependentAppsDontBlock(t *testing.T) {
 	if queued {
 		t.Error("a deploy on app-one must not queue deploys for app-two")
 	}
+
+	// The deploy runs in a background goroutine; let it finish before
+	// the test ends or it races t.TempDir cleanup and the DB close.
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		deps, _ := dbpkg.ListDeployments(db, app2.ID, 5)
+		if len(deps) == 1 && deps[0].Status != "running" {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	h.pm.StopApp(app2.ID)
 }
