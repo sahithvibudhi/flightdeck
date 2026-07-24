@@ -197,6 +197,9 @@ export const updateApp = (id: string, data: {
   health_path?: string;
 }) => request<App>(`/apps/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 
+export const rotateWebhookSecret = (appId: string) =>
+  request<{ webhook_secret: string }>(`/apps/${appId}/webhook-secret`, { method: 'POST' });
+
 export async function uploadZip(appId: string, file: File): Promise<{ message: string }> {
   const token = getToken();
   const formData = new FormData();
@@ -294,6 +297,7 @@ export interface SystemInfo {
   os: string;
   arch: string;
   server_ip: string;
+  version: string;
 }
 
 export const getSettings = () => request<Settings>('/settings');

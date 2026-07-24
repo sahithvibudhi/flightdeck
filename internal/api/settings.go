@@ -179,8 +179,19 @@ func (h *SettingsHandler) UpdateGitToken(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "git token updated"})
 }
 
+/*
+Version is stamped by the release build via ldflags; "dev" for local
+builds. Exposed through /api/system so the UI can show what is running.
+*/
+var Version = "dev"
+
+type systemInfoResponse struct {
+	system.Info
+	Version string `json:"version"`
+}
+
 func (h *SettingsHandler) SystemInfo(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, system.Detect())
+	writeJSON(w, http.StatusOK, systemInfoResponse{Info: system.Detect(), Version: Version})
 }
 
 func (h *SettingsHandler) ServerMetrics(w http.ResponseWriter, r *http.Request) {

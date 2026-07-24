@@ -281,6 +281,31 @@ func (h *AppsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+/*
+RotateWebhookSecret replaces the app's push-to-deploy secret. The old
+webhook URL stops working immediately; the response carries the new
+secret exactly once-style like token creation.
+*/
+func (h *AppsHandler) RotateWebhookSecret(w http.ResponseWriter, r *http.Request) {
+	app, err := db.GetApp(h.database, chi.URLParam(r, "id"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "app not found"})
+		return
+	}
+
+	secret, err := auth.GenerateSecret()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to generate secret"})
+		return
+	}
+	if err := db.SetWebhookSecret(h.database, app.ID, secret); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save secret"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"webhook_secret": secret})
+}
+
 func (h *AppsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	app, err := db.GetApp(h.database, id)

@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   getApp, deleteApp, startApp, stopApp, restartApp, pullApp, updateApp,
   getAppLogs, streamAppLogs, listEnvs, replaceEnvs, listDomains, addDomain, removeDomain,
   listDeployments, deployApp, rollbackDeployment, getDeploymentLogs, streamDeploymentLogs,
-  getSystemInfo, errMsg, findInvalidEnv,
+  rotateWebhookSecret, getSystemInfo, errMsg, findInvalidEnv,
   type App, type EnvVar, type DomainEntry, type Deployment, type SystemInfo,
 } from '../api';
-import { EyeIcon, EyeOffIcon, ExternalLinkIcon } from '../components/Icons';
+import { EyeIcon, EyeOffIcon, ExternalLinkIcon, ChevronIcon } from '../components/Icons';
 import { toast } from '../components/toastBus';
 import { relativeTime, exactTime, duration } from '../lib/time';
 import { parseEnvText, mergeEnvs } from '../lib/env';
@@ -23,6 +23,12 @@ function formatMemory(mb: number): string {
 
 type Tab = 'overview' | 'logs' | 'deployments' | 'configuration';
 
+const TAB_KEYS: Tab[] = ['overview', 'logs', 'deployments', 'configuration'];
+
+function isTab(v: string | null): v is Tab {
+  return !!v && (TAB_KEYS as string[]).includes(v);
+}
+
 interface DeployPanel {
   depId: string;
   lines: string[];
@@ -34,7 +40,14 @@ export default function AppDetail() {
   const navigate = useNavigate();
   const [app, setApp] = useState<App | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [tab, setTab] = useState<Tab>('overview');
+  // The active tab lives in the URL so tabs survive refresh and can be
+  // linked to directly (?tab=logs).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawTab = searchParams.get('tab');
+  const tab: Tab = isTab(rawTab) ? rawTab : 'overview';
+  const setTab = (t: Tab) => {
+    setSearchParams(t === 'overview' ? {} : { tab: t }, { replace: true });
+  };
   const [logs, setLogs] = useState<string[]>([]);
   const [envs, setEnvs] = useState<EnvVar[]>([]);
   const [domains, setDomains] = useState<DomainEntry[]>([]);
@@ -43,6 +56,8 @@ export default function AppDetail() {
   const [domainError, setDomainError] = useState('');
   const [configError, setConfigError] = useState('');
   const [envsDirtySince, setEnvsDirtySince] = useState(false);
+  const [envsEdited, setEnvsEdited] = useState(false);
+  const [confirmingRotate, setConfirmingRotate] = useState(false);
   const [pulling, setPulling] = useState(false);
   const [pullOutput, setPullOutput] = useState('');
   const [actionLoading, setActionLoading] = useState('');
@@ -255,6 +270,17 @@ export default function AppDetail() {
     }
   }
 
+  async function handleRotateSecret() {
+    setConfirmingRotate(false);
+    try {
+      const res = await rotateWebhookSecret(id!);
+      setApp(prev => (prev ? { ...prev, webhook_secret: res.webhook_secret } : prev));
+      toast('Webhook secret regenerated. The old URL no longer works.');
+    } catch (err) {
+      toast(errMsg(err), 'error');
+    }
+  }
+
   async function handleDelete() {
     setConfirmingDelete(false);
     try {
@@ -269,14 +295,17 @@ export default function AppDetail() {
     const updated = [...envs];
     updated[index] = { ...updated[index], [field]: val };
     setEnvs(updated);
+    setEnvsEdited(true);
   }
 
   function addEnvRow() {
     setEnvs([...envs, { key: '', value: '' }]);
+    setEnvsEdited(true);
   }
 
   function removeEnvRow(index: number) {
     setEnvs(envs.filter((_, i) => i !== index));
+    setEnvsEdited(true);
   }
 
   // Paste a whole .env file and merge it over the current list.
@@ -290,6 +319,7 @@ export default function AppDetail() {
     }
     setEnvError('');
     setEnvs(mergeEnvs(envs, imported));
+    setEnvsEdited(true);
     toast(`Imported ${imported.length} variable${imported.length === 1 ? '' : 's'}. Review and save.`);
   }
 
@@ -317,6 +347,7 @@ export default function AppDetail() {
     try {
       await replaceEnvs(id!, toSave);
       await loadEnvs();
+      setEnvsEdited(false);
       if (app?.status === 'running') {
         setEnvsDirtySince(true);
         toast('Saved. Restart to apply the new environment.');
@@ -432,7 +463,7 @@ export default function AppDetail() {
       <div className="container fade-in">
         <div className="app-detail-header">
           <div className="app-detail-title">
-            <div className="app-detail-name">{app.name}</div>
+            <div className="app-detail-name" title={app.name}>{app.name}</div>
             <div className="app-detail-meta">
               <span className={`badge badge-${app.status}`}>{app.status}</span>
               <span>port {app.port}</span>
@@ -505,7 +536,7 @@ export default function AppDetail() {
         {deployPanel && (
           <div className="section fade-in">
             <div className="section-header">
-              <h2>
+              <h2 className="section-title">
                 {deployPanel.running ? 'Deploy in progress' : 'Last deploy'}
               </h2>
               <div className="flex-center gap-sm">
@@ -524,20 +555,51 @@ export default function AppDetail() {
           </div>
         )}
 
-        <div className="tabs" role="tablist">
-          {tabs.map(t => (
+        {envsDirtySince && app.status === 'running' && (
+          <div className="warning-banner">
+            <span>Environment changes are saved but the running process still has the old values.</span>
             <button
-              key={t.key}
-              role="tab"
-              aria-selected={tab === t.key}
-              className={`tab ${tab === t.key ? 'tab-active' : ''}`}
-              onClick={() => setTab(t.key)}
+              className="btn btn-sm btn-secondary"
+              onClick={() => { setEnvsDirtySince(false); setConfirmingAction('restart'); }}
             >
-              {t.label}
-              {t.count !== undefined && t.count > 0 && <span className="tab-count">{t.count}</span>}
+              Restart now
             </button>
-          ))}
+          </div>
+        )}
+
+        <div className="tabs-wrap">
+          <div
+            className="tabs"
+            role="tablist"
+            aria-label="App sections"
+            onKeyDown={e => {
+              if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+              e.preventDefault();
+              const idx = TAB_KEYS.indexOf(tab);
+              const next = TAB_KEYS[(idx + (e.key === 'ArrowRight' ? 1 : TAB_KEYS.length - 1)) % TAB_KEYS.length];
+              setTab(next);
+              document.getElementById(`tab-${next}`)?.focus();
+            }}
+          >
+            {tabs.map(t => (
+              <button
+                key={t.key}
+                id={`tab-${t.key}`}
+                role="tab"
+                aria-selected={tab === t.key}
+                aria-controls="app-tabpanel"
+                tabIndex={tab === t.key ? 0 : -1}
+                className={`tab ${tab === t.key ? 'tab-active' : ''}`}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+                {t.count !== undefined && t.count > 0 && <span className="tab-count">{t.count}</span>}
+              </button>
+            ))}
+          </div>
         </div>
+
+        <div id="app-tabpanel" role="tabpanel" aria-labelledby={`tab-${tab}`}>
 
         {tab === 'overview' && (
           <>
@@ -557,22 +619,15 @@ export default function AppDetail() {
                 </div>
               </div>
             ) : (
-              <p className="list-empty">
-                {app.status === 'crashed'
-                  ? 'The app crashed repeatedly and gave up. Check the logs, fix the app, and press Start.'
-                  : 'The app is not running. Start it to see live metrics.'}
-              </p>
-            )}
-
-            {envsDirtySince && app.status === 'running' && (
-              <div className="warning-banner">
-                <span>Environment changes are saved but the running process still has the old values.</span>
-                <button
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => { setEnvsDirtySince(false); setConfirmingAction('restart'); }}
-                >
-                  Restart now
-                </button>
+              <div className="list-empty flex-center gap-md" style={{ flexWrap: 'wrap' }}>
+                <span>
+                  {app.status === 'crashed'
+                    ? 'The app crashed repeatedly and gave up. The reason is at the end of the logs.'
+                    : 'The app is not running. Start it to see live metrics.'}
+                </span>
+                {app.status === 'crashed' && (
+                  <button className="btn btn-sm btn-secondary" onClick={() => setTab('logs')}>View logs</button>
+                )}
               </div>
             )}
 
@@ -582,7 +637,7 @@ export default function AppDetail() {
 
             {deployments.length > 0 && (
               <div className="section mt-md">
-                <h2>Latest deployment</h2>
+                <h2 className="section-title">Latest deployment</h2>
                 <DeploymentRow
                   d={deployments[0]}
                   isLive={deployments[0].id === liveDeployId}
@@ -640,7 +695,7 @@ export default function AppDetail() {
           <>
             <div className="section">
               <div className="section-header">
-                <h2>Configuration</h2>
+                <h2 className="section-title">Configuration</h2>
                 {!editing && <button className="btn btn-secondary btn-sm" onClick={startEditing}>Edit</button>}
               </div>
               {editing ? (
@@ -723,7 +778,7 @@ export default function AppDetail() {
             </div>
 
             <div className="section">
-              <h2>Environment Variables</h2>
+              <h2 className="section-title">Environment Variables</h2>
               <form onSubmit={saveEnvs}>
                 {envs.length === 0 && (
                   <p className="list-empty">No environment variables yet. They're injected into the process and written to a .env file on start.</p>
@@ -745,13 +800,13 @@ export default function AppDetail() {
                 <div className="flex gap-sm mt-sm">
                   <button type="button" className="btn btn-ghost btn-sm" onClick={addEnvRow}>Add variable</button>
                   <button type="button" className="btn btn-ghost btn-sm" onClick={importEnvText}>Paste .env</button>
-                  <button type="submit" className="btn btn-primary btn-sm">Save changes</button>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={!envsEdited}>Save changes</button>
                 </div>
               </form>
             </div>
 
             <div className="section">
-              <h2>Domains</h2>
+              <h2 className="section-title">Domains</h2>
               {domains.length === 0 && (
                 <p className="list-empty">
                   {system?.server_ip
@@ -774,7 +829,7 @@ export default function AppDetail() {
 
             {app.webhook_secret && (
               <div className="section">
-                <h2>Push to Deploy</h2>
+                <h2 className="section-title">Push to Deploy</h2>
                 <p className="form-hint" style={{ marginBottom: 8 }}>
                   Add this URL as a webhook in your GitHub repo (Settings → Webhooks) or call it from CI.
                   Each delivery pulls, rebuilds, and restarts the app.
@@ -784,6 +839,9 @@ export default function AppDetail() {
                   <button className="btn btn-secondary btn-sm" onClick={copyWebhookUrl}>
                     {copied ? 'Copied' : 'Copy URL'}
                   </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirmingRotate(true)}>
+                    Regenerate
+                  </button>
                 </div>
                 <p className="form-hint" style={{ marginTop: 8 }}>
                   GitHub webhooks can instead use the secret field with URL <code>{window.location.origin}/hooks/{app.id}</code> (content type: application/json).
@@ -792,7 +850,7 @@ export default function AppDetail() {
             )}
 
             <div className="section">
-              <h2>Danger Zone</h2>
+              <h2 className="section-title">Danger Zone</h2>
               <div className="danger-zone">
                 <div className="danger-zone-text">
                   <div className="danger-zone-title">Delete this app</div>
@@ -805,6 +863,7 @@ export default function AppDetail() {
             </div>
           </>
         )}
+        </div>
       </div>
 
       <ConfirmDialog
@@ -833,6 +892,16 @@ export default function AppDetail() {
       />
 
       <ConfirmDialog
+        open={confirmingRotate}
+        title="Regenerate webhook secret?"
+        message="The current webhook URL stops working immediately. Update GitHub or your CI with the new URL after regenerating."
+        confirmLabel="Regenerate"
+        danger
+        onConfirm={handleRotateSecret}
+        onCancel={() => setConfirmingRotate(false)}
+      />
+
+      <ConfirmDialog
         open={confirmingDelete}
         title={`Delete ${app.name}?`}
         message={app.work_dir
@@ -858,42 +927,52 @@ interface DeploymentRowProps {
   onRollback: (d: Deployment) => void;
 }
 
+/*
+The whole row is one affordance: click to expand the captured log.
+Roll back lives inside the expansion, next to the log it would revert
+to, instead of crowding every row with a destructive ghost button.
+*/
 function DeploymentRow({ d, isLive, expanded, expandedLines, appName, canRollback, onToggleLog, onRollback }: DeploymentRowProps) {
   const dur = duration(d.started_at, d.finished_at);
+  const message = d.commit_msg || (d.detail ? d.detail.split('\n')[0] : '');
   return (
     <div>
-      <div className="deployment-row">
+      <button
+        type="button"
+        className="deployment-row"
+        aria-expanded={expanded}
+        onClick={() => onToggleLog(d.id)}
+      >
         <span className={`badge badge-${d.status === 'success' ? 'running' : d.status === 'failed' ? 'crashed' : 'deploying'}`}>
           {d.status}
         </span>
         {isLive && <span className="badge badge-running" title="This deployment is currently serving">live</span>}
         <span className="deployment-trigger">{d.triggered_by}</span>
+        <span className="deployment-msg" title={message}>{message}</span>
         {d.commit_sha && (
-          <span className="deployment-commit" title={d.commit_sha}>
-            {d.commit_sha.slice(0, 7)}{d.commit_msg ? ` ${d.commit_msg}` : ''}
-          </span>
+          <span className="deployment-commit" title={d.commit_sha}>{d.commit_sha.slice(0, 7)}</span>
         )}
         <span className="deployment-time" title={exactTime(d.started_at)}>{relativeTime(d.started_at)}</span>
         {dur && <span className="deployment-time">{dur}</span>}
-        <div className="deployment-rollback flex-center gap-xs">
-          <button className="btn btn-ghost btn-sm" onClick={() => onToggleLog(d.id)}>
-            {expanded ? 'Hide log' : 'View log'}
-          </button>
-          {canRollback && (
-            <button className="btn btn-ghost btn-sm" onClick={() => onRollback(d)}>
-              Roll back
-            </button>
-          )}
-        </div>
-      </div>
+        <span className={`deployment-chevron ${expanded ? 'deployment-chevron-open' : ''}`} aria-hidden="true">
+          <ChevronIcon />
+        </span>
+      </button>
       {expanded && (
-        <div className="mt-sm" style={{ marginBottom: 12 }}>
+        <div className="deployment-expanded">
           <LogViewer
             lines={expandedLines}
             filename={`${appName}-deploy.log`}
             emptyText="No log was captured for this deployment (it predates deploy logging)."
             compact
           />
+          {canRollback && (
+            <div className="deployment-expanded-actions">
+              <button className="btn btn-secondary btn-sm" onClick={() => onRollback(d)}>
+                Roll back to this deployment
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

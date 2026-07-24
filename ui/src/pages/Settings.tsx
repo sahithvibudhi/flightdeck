@@ -37,8 +37,20 @@ export default function Settings() {
   const [newToken, setNewToken] = useState('');
   const [tokenCopied, setTokenCopied] = useState(false);
   const [deletingToken, setDeletingToken] = useState<ApiToken | null>(null);
+  const [latestTag, setLatestTag] = useState('');
 
   useEffect(() => { loadAll(); }, []);
+
+  /*
+  Update check runs in the visitor's browser against the public GitHub
+  API, so the server needs no outbound access. Silent on any failure.
+  */
+  useEffect(() => {
+    fetch('https://api.github.com/repos/sahithvibudhi/flightdeck/releases/latest')
+      .then(r => (r.ok ? r.json() : null))
+      .then(rel => { if (rel?.tag_name) setLatestTag(rel.tag_name); })
+      .catch(() => { /* offline or rate limited */ });
+  }, []);
 
   async function loadAll() {
     try {
@@ -135,11 +147,21 @@ export default function Settings() {
     }
   }
 
+  /*
+  Testing unsaved values is a trap: save the form first so the test
+  exercises exactly what is on screen.
+  */
   async function handleTestNotifications() {
     setTestingNotify(true);
     try {
+      await updateNotifications({
+        discord: notifyDiscord,
+        telegram_token: notifyTgToken,
+        telegram_chat: notifyTgChat,
+        webhook: notifyWebhook,
+      });
       await testNotifications();
-      toast('Test sent to the configured channels. Check that it arrived.');
+      toast('Saved and sent. Check that the test arrived.');
     } catch (err) {
       toast(errMsg(err), 'error');
     } finally {
@@ -223,7 +245,9 @@ export default function Settings() {
                     <span className="runtime-card-name">Caddy</span>
                   </div>
                   <span className="runtime-card-version">
-                    {system.caddy.running ? (system.caddy.version || 'running') : 'Not running — domains and SSL disabled'}
+                    {system.caddy.running
+                      ? (system.caddy.version && system.caddy.version !== 'unknown' ? system.caddy.version : 'running')
+                      : 'Not running — domains and SSL disabled'}
                   </span>
                   {!system.caddy.running && (
                     <button
@@ -442,6 +466,29 @@ export default function Settings() {
               {pwError && <p className="error-msg" style={{ marginBottom: 8 }}>{pwError}</p>}
               <button type="submit" className="btn btn-primary btn-sm" disabled={!currentPw || !newPw || !confirmPw}>Update password</button>
             </form>
+          </div>
+
+          <span className="settings-group-title">About</span>
+
+          <div className="card">
+            <div className="about-row">
+              <div>
+                <div className="about-name">flightdeck {system?.version || ''}</div>
+                <p className="form-hint">
+                  {latestTag && system?.version && system.version !== 'dev' && latestTag !== system.version
+                    ? `${latestTag} is available.`
+                    : 'Single binary. Upgrading swaps the binary and restarts the service; running apps are not touched.'}
+                </p>
+              </div>
+              <a
+                className="btn btn-secondary btn-sm"
+                href="https://github.com/sahithvibudhi/flightdeck/releases"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Releases
+              </a>
+            </div>
           </div>
         </div>
       </div>

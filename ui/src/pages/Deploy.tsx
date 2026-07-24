@@ -243,7 +243,7 @@ export default function Deploy() {
               <div className="deploy-state-actions">
                 <Link to="/" className="btn btn-primary">Go to dashboard</Link>
                 {createdApp && (
-                  <Link to={`/apps/${createdApp.id}`} className="btn btn-secondary">Configure domain</Link>
+                  <Link to={`/apps/${createdApp.id}?tab=configuration`} className="btn btn-secondary">Configure domain</Link>
                 )}
               </div>
             </>
@@ -291,10 +291,10 @@ export default function Deploy() {
 
         <div className="source-tabs">
           <button
-            className={`source-tab ${source === 'path' ? 'source-tab-active' : ''}`}
-            onClick={() => setSource('path')}
+            className={`source-tab ${source === 'github' ? 'source-tab-active' : ''}`}
+            onClick={() => setSource('github')}
           >
-            <FolderIcon /> Server Path
+            <GitHubIcon /> GitHub
           </button>
           <button
             className={`source-tab ${source === 'upload' ? 'source-tab-active' : ''}`}
@@ -303,10 +303,10 @@ export default function Deploy() {
             <UploadIcon /> Upload Zip
           </button>
           <button
-            className={`source-tab ${source === 'github' ? 'source-tab-active' : ''}`}
-            onClick={() => setSource('github')}
+            className={`source-tab ${source === 'path' ? 'source-tab-active' : ''}`}
+            onClick={() => setSource('path')}
           >
-            <GitHubIcon /> GitHub
+            <FolderIcon /> Server Path
           </button>
         </div>
 

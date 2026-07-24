@@ -43,6 +43,7 @@ func NewRouter(database *sql.DB, pm *process.Manager, dataDir string) *chi.Mux {
 			r.Put("/apps/{id}", appsHandler.Update)
 			r.Delete("/apps/{id}", appsHandler.Delete)
 			r.Post("/apps/{id}/upload", appsHandler.Upload)
+			r.Post("/apps/{id}/webhook-secret", appsHandler.RotateWebhookSecret)
 			r.Post("/apps/{id}/start", appsHandler.Start)
 			r.Post("/apps/{id}/stop", appsHandler.Stop)
 			r.Post("/apps/{id}/restart", appsHandler.Restart)
