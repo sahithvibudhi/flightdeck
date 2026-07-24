@@ -44,7 +44,8 @@ export function ToastHost() {
   const [toasts, setToasts] = useState<ToastMsg[]>([]);
 
   useEffect(() => {
-    subscribeToasts(t => setToasts(prev => [...prev, t]));
+    // A burst of errors must not build a tower; keep the newest three.
+    subscribeToasts(t => setToasts(prev => [...prev, t].slice(-3)));
     return () => subscribeToasts(null);
   }, []);
 

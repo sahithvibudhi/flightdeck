@@ -30,9 +30,12 @@ jobs:
       - run: make ui
       - run: go test ./internal/... -count=1
       - name: Build release binaries
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o dist/flightdeck-linux-amd64 ./cmd/flightdeck
-          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o dist/flightdeck-linux-arm64 ./cmd/flightdeck
+          LDFLAGS="-X github.com/sahithvibudhi/flightdeck/internal/api.Version=${TAG}"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/flightdeck-linux-amd64 ./cmd/flightdeck
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/flightdeck-linux-arm64 ./cmd/flightdeck
       - name: Generate checksums
         run: cd dist && sha256sum flightdeck-linux-* > checksums.txt
       - name: Create GitHub Release

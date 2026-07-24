@@ -5,11 +5,8 @@ import {
   type App, type SystemInfo, type ServerMetricsHistory,
 } from '../api';
 import { relativeTime, exactTime, parseTimestamp } from '../lib/time';
+import { repoLabel } from '../lib/repo';
 import Layout from '../components/Layout';
-
-function repoShortName(url: string): string {
-  return url.replace(/^https?:\/\/(www\.)?github\.com\//, '').replace(/\.git$/, '');
-}
 
 function formatMemory(mb: number): string {
   if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
@@ -29,9 +26,14 @@ function percentUsed(used: number, total: number): string {
   return `${(used / total * 100).toFixed(0)}% used`;
 }
 
+/*
+Without an explicit max the bars scale to the visible window with a
+little headroom, so slow-moving series (memory, disk) still show their
+shape instead of a flat floor against total capacity.
+*/
 function Sparkline({ data, max }: { data: number[]; max?: number }) {
-  const ceil = max || Math.max(...data, 1);
   const bars = data.slice(-30);
+  const ceil = max || Math.max(...bars, 0.001) * 1.2;
   return (
     <div className="sparkline">
       {bars.map((v, i) => (
@@ -76,6 +78,19 @@ export default function Apps() {
     const interval = setInterval(loadAll, 5000);
     return () => clearInterval(interval);
   }, [loadAll]);
+
+  // "/" jumps to search, like every list UI worth using.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement;
+      if (e.key === '/' && t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA' && t.tagName !== 'SELECT') {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('.app-search')?.focus();
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   async function handleDeploySample() {
     setSampleLoading(true);
@@ -141,30 +156,27 @@ export default function Apps() {
               <span className="server-stat-label">Memory <span className="server-stat-unit-inline">{formatCapacity(latest.memory_used_mb, latest.memory_total_mb).unit}</span></span>
               <span className="server-stat-value">{formatCapacity(latest.memory_used_mb, latest.memory_total_mb).numbers}</span>
               <span className="server-stat-pct">{percentUsed(latest.memory_used_mb, latest.memory_total_mb)}</span>
-              <Sparkline data={metrics.snapshots.map(s => s.memory_used_mb)} max={latest.memory_total_mb} />
+              <Sparkline data={metrics.snapshots.map(s => s.memory_used_mb)} />
             </div>
             <div className="server-stat">
               <span className="server-stat-label">Disk <span className="server-stat-unit-inline">{formatCapacity(latest.disk_used_mb, latest.disk_total_mb).unit}</span></span>
               <span className="server-stat-value">{formatCapacity(latest.disk_used_mb, latest.disk_total_mb).numbers}</span>
               <span className="server-stat-pct">{percentUsed(latest.disk_used_mb, latest.disk_total_mb)}</span>
-              <Sparkline data={metrics.snapshots.map(s => s.disk_used_mb)} max={latest.disk_total_mb} />
+              <Sparkline data={metrics.snapshots.map(s => s.disk_used_mb)} />
             </div>
             <div className="server-stat">
               <span className="server-stat-label">Apps</span>
               <span className="server-stat-value">{apps.filter(a => a.status === 'running').length}<span className="server-stat-unit">/{apps.length}</span></span>
               {system && (
-                <div className="runtime-bar-items" style={{ marginTop: 4 }}>
+                <Link to="/settings" className="runtime-summary" title="Manage runtimes in Settings">
                   <span className={`runtime-pill runtime-pill-compact ${system.caddy.running ? 'runtime-pill-ok' : 'runtime-pill-down'}`}>
                     <span className="runtime-dot" />
-                    Caddy
+                    Caddy {system.caddy.running ? '' : 'down'}
                   </span>
-                  {system.runtimes.filter(r => r.installed).map(r => (
-                    <span key={r.name} className="runtime-pill runtime-pill-compact runtime-pill-ok">
-                      <span className="runtime-dot" />
-                      {r.name}
-                    </span>
-                  ))}
-                </div>
+                  <span className="runtime-summary-count">
+                    {system.runtimes.filter(r => r.installed).length} runtimes ready
+                  </span>
+                </Link>
               )}
             </div>
           </div>
@@ -207,12 +219,12 @@ export default function Apps() {
                 <div key={app.id} className="app-card">
                   <div className="app-card-header">
                     {/* Stretched link: the name anchor covers the card. */}
-                    <Link to={`/apps/${app.id}`} className="app-card-name app-card-link">{app.name}</Link>
+                    <Link to={`/apps/${app.id}`} className="app-card-name app-card-link" title={app.name}>{app.name}</Link>
                     <span className={`badge badge-${app.status}`}>{app.status}</span>
                   </div>
 
-                  <div className={`app-card-repo ${!app.repo_url ? 'app-card-repo-none' : ''}`}>
-                    {app.repo_url ? repoShortName(app.repo_url) : 'No repository'}
+                  <div className={`app-card-repo ${!app.repo_url ? 'app-card-repo-none' : ''}`} title={app.repo_url || undefined}>
+                    {app.repo_url ? repoLabel(app.repo_url) : 'No repository'}
                   </div>
 
                   <div className="app-card-metrics">
@@ -261,12 +273,16 @@ export default function Apps() {
                         </a>
                       </div>
                     ) : <span />)}
-                    {app.last_deploy_at && (
+                    {app.last_deploy_at ? (
                       <span
                         className={`app-card-deployed ${app.last_deploy_status === 'failed' ? 'app-card-deployed-failed' : ''}`}
                         title={exactTime(app.last_deploy_at)}
                       >
                         {app.last_deploy_status === 'failed' ? 'failed deploy' : 'deployed'} {relativeTime(app.last_deploy_at)}
+                      </span>
+                    ) : (
+                      <span className="app-card-deployed" title={exactTime(app.created_at)}>
+                        created {relativeTime(app.created_at)}
                       </span>
                     )}
                   </div>
