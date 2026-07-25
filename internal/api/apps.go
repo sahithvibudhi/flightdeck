@@ -97,6 +97,11 @@ type appResponse struct {
 	// Latest deployment, if any, so lists can show recency at a glance.
 	LastDeployAt     string `json:"last_deploy_at,omitempty"`
 	LastDeployStatus string `json:"last_deploy_status,omitempty"`
+	// PortCheck says whether the running process group actually listens
+	// on url_port: "ok", "mismatch" (with the ports it does listen on),
+	// or absent when unknown (stopped, just started, or not Linux).
+	PortCheck      string `json:"port_check,omitempty"`
+	ListeningPorts []int  `json:"listening_ports,omitempty"`
 }
 
 func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
@@ -136,6 +141,9 @@ func (h *AppsHandler) buildAppResponse(a *db.App) appResponse {
 	if dep, err := db.LatestDeployment(h.database, a.ID); err == nil && dep != nil {
 		resp.LastDeployAt = dep.StartedAt
 		resp.LastDeployStatus = dep.Status
+	}
+	if a.Status == "running" {
+		resp.PortCheck, resp.ListeningPorts = h.pm.PortCheck(a.ID, a.EffectivePort())
 	}
 	return resp
 }
