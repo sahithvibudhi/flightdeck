@@ -555,6 +555,18 @@ export default function AppDetail() {
           </div>
         )}
 
+        {app.status === 'running' && app.port_check === 'mismatch' && (
+          <div className="warning-banner">
+            <span>
+              Running, but nothing is listening on port {app.url_port}
+              {app.listening_ports && app.listening_ports.length > 0
+                ? `. The process is listening on ${app.listening_ports.join(', ')} instead`
+                : ''}
+              . Make sure the app reads the PORT environment variable.
+            </span>
+          </div>
+        )}
+
         {envsDirtySince && app.status === 'running' && (
           <div className="warning-banner">
             <span>Environment changes are saved but the running process still has the old values.</span>

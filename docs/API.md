@@ -31,7 +31,12 @@ GET    /api/apps/:id/deployments/:depID/logs         Captured deploy log {lines,
 GET    /api/apps/:id/deployments/:depID/logs/stream  Live deploy log (SSE; ends with "done" event)
 GET    /api/apps/:id/logs?lines=100 Log snapshot
 GET    /api/apps/:id/logs/stream    Live log tail (SSE; pass ?token=)
+POST   /api/apps/:id/webhook-secret Rotate the push-to-deploy secret
 ```
+
+Running apps include `port_check` ("ok" or "mismatch") and `listening_ports`
+in their responses: flightdeck reads /proc to verify the process group
+actually listens on its assigned port, and the UI warns when it doesn't.
 
 ## Push-to-deploy
 

@@ -78,7 +78,7 @@ func (h *DomainsHandler) Add(w http.ResponseWriter, r *http.Request) {
 	if err := proxy.AddRoute(d.ID, domain, app.EffectivePort()); err != nil {
 		// Rollback domain from db
 		db.DeleteDomain(h.database, d.ID)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to register domain with proxy"})
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to register the domain with Caddy. Check that Caddy is running on the Settings page"})
 		return
 	}
 

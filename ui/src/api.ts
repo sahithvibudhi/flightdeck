@@ -120,6 +120,9 @@ export interface App {
   created_at: string;
   last_deploy_at?: string;
   last_deploy_status?: string;
+  // "ok" | "mismatch"; absent when unknown (stopped or just started).
+  port_check?: string;
+  listening_ports?: number[];
 }
 
 export const listApps = () => request<App[]>('/apps');
